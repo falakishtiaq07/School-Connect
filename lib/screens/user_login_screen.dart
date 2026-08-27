@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:school_connect/auth/forgot_password_screen.dart';
 import 'package:school_connect/screens/student_dashboard_screen.dart';
 import 'package:school_connect/screens/teacher_dashboard_screen.dart';
 //import 'package:school_connect/auth/otp_verification_screen.dart';
-import '../theme/app_theme.dart'; // Aapki global theme file
-//import 'welcome_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class UserLoginScreen extends StatefulWidget {
   const UserLoginScreen({super.key});
@@ -180,6 +180,62 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                 password: password,
                               );
 
+                          final User? loggedInUser = credential.user;
+
+                          if (loggedInUser == null) {
+                            return;
+                          }
+
+                          // Firebase se latest verification status lao
+                          await loggedInUser.reload();
+
+                          final User? refreshedUser =
+                              FirebaseAuth.instance.currentUser;
+
+                          if (refreshedUser == null) {
+                            return;
+                          }
+                          // Agar email verify nahi hui
+                          if (!refreshedUser.emailVerified) {
+                            // Verification email dobara bhej do
+                            try {
+                              await refreshedUser.sendEmailVerification();
+                            } catch (e) {
+                              print("Verification email resend error: $e");
+                            }
+
+                            // User ko logout karo
+                            await FirebaseAuth.instance.signOut();
+
+                            if (context.mounted) {
+                              showDialog(
+                                context: context,
+                                builder: (context) {
+                                  return AlertDialog(
+                                    title: const Text("Email Not Verified"),
+                                    content: Text(
+                                      "Your email has not been verified yet.\n\n"
+                                      "A verification email has been sent to:\n"
+                                      "$email\n\n"
+                                      "Please open your email, click the verification link, "
+                                      "and then login again.",
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pop(context);
+                                        },
+                                        child: const Text("OK"),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                            }
+
+                            return;
+                          }
+                          
                           String? uid = credential.user?.uid;
 
                           if (uid != null) {
@@ -197,6 +253,21 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                   .trim();
 
                               print("USER ROLE IS: $userRole");
+
+                              await OneSignal.login(uid);
+                              await OneSignal.User.addTagWithKey(
+                                "role",
+                                userRole,
+                              );
+                              if (userRole == 'student') {
+                                String studentClass = userDoc
+                                    .get('class')
+                                    .toString(); // ya jo bhi field name ho
+                                await OneSignal.User.addTagWithKey(
+                                  "class",
+                                  studentClass,
+                                );
+                              }
 
                               // 1. Check: Agar Admin user screen se login karne aaye (Strictly Block)
                               if (userRole == 'admin') {
@@ -285,7 +356,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                             }
                           }
                         } on FirebaseAuthException catch (e) {
-                          // ❌ Firebase Exceptions
                           String errorMessage =
                               'An error occurred. Please try again.';
 

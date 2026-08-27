@@ -371,178 +371,11 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
                                     }
                                   });
                                 } else {
-                                  showDialog(
-                                    context: context,
-                                    builder: (_) => Dialog(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(18),
-                                      ),
-                                      child: ConstrainedBox(
-                                        constraints: const BoxConstraints(
-                                          maxWidth: 650,
-                                          maxHeight: 700,
-                                        ),
-                                        child: SingleChildScrollView(
-                                          padding: const EdgeInsets.all(20),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              /// Title
-                                              Row(
-                                                children: [
-                                                  const Expanded(
-                                                    child: Text(
-                                                      "Announcement Details",
-                                                      style: TextStyle(
-                                                        fontSize: 22,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  IconButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(context),
-                                                    icon: const Icon(
-                                                      Icons.close,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-
-                                              const SizedBox(height: 15),
-
-                                              /// Title Value
-                                              Text(
-                                                data['title'] ?? "No Title",
-                                                style: const TextStyle(
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-
-                                              const SizedBox(height: 10),
-
-                                              /// Date
-                                              Row(
-                                                children: [
-                                                  const Icon(
-                                                    Icons
-                                                        .calendar_today_outlined,
-                                                    size: 16,
-                                                    color: Colors.grey,
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    "${date.day}/${date.month}/${date.year}",
-                                                    style: const TextStyle(
-                                                      color: Colors.grey,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-
-                                              const SizedBox(height: 25),
-
-                                              /// Description
-                                              const Text(
-                                                "Description",
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Color(0xFF1746A2),
-                                                ),
-                                              ),
-
-                                              const SizedBox(height: 8),
-
-                                              Container(
-                                                width: double.infinity,
-                                                padding: const EdgeInsets.all(
-                                                  14,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(
-                                                    0xFFF5F7FB,
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                                child: Text(
-                                                  data['description'] ??
-                                                      "No description",
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    height: 1.6,
-                                                  ),
-                                                ),
-                                              ),
-
-                                              const SizedBox(height: 22),
-
-                                              /// Attachment
-                                              if (data['attachment'] != null &&
-                                                  data['attachment']
-                                                      .toString()
-                                                      .trim()
-                                                      .isNotEmpty) ...[
-                                                const Text(
-                                                  "Attachment",
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Color(0xFF1746A2),
-                                                  ),
-                                                ),
-
-                                                const SizedBox(height: 10),
-
-                                                InkWell(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  onTap: () {
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            FullScreenImagePage(
-                                                              imageUrl:
-                                                                  data['attachment'],
-                                                            ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          12,
-                                                        ),
-                                                    child: Image.network(
-                                                      data['attachment'],
-                                                      width: 180,
-                                                      height: 120,
-                                                      fit: BoxFit.cover,
-                                                    ),
-                                                  ),
-                                                ),
-
-                                                const SizedBox(height: 8),
-
-                                                const Text(
-                                                  "Tap to view",
-                                                  style: TextStyle(
-                                                    color: Colors.grey,
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        ),
-                                      ),
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          AnnouncementDetailScreen(data: data),
                                     ),
                                   );
                                 }
@@ -699,6 +532,136 @@ class FullScreenImagePage extends StatelessWidget {
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class AnnouncementDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const AnnouncementDetailScreen({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    Timestamp? timestamp = data['createdAt'] as Timestamp?;
+    DateTime date = timestamp?.toDate() ?? DateTime.now();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FB),
+      appBar: AppBar(
+        elevation: 0,
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1E3A5F),
+        foregroundColor: Colors.white,
+        title: const Text(
+          "Announcement Details",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            /// Title Value
+            Text(
+              data['title'] ?? "No Title",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            /// Date
+            Row(
+              children: [
+                const Icon(
+                  Icons.calendar_today_outlined,
+                  size: 16,
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  "${date.day}/${date.month}/${date.year}",
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 25),
+
+            /// Description
+            const Text(
+              "Description",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1746A2),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F7FB),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                data['description'] ?? "No description",
+                style: const TextStyle(fontSize: 14, height: 1.6),
+              ),
+            ),
+
+            const SizedBox(height: 22),
+
+            /// Attachment
+            if (data['attachment'] != null &&
+                data['attachment'].toString().trim().isNotEmpty) ...[
+              const Text(
+                "Attachment",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1746A2),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          FullScreenImagePage(imageUrl: data['attachment']),
+                    ),
+                  );
+                },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    data['attachment'],
+                    width: 180,
+                    height: 120,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Text(
+                "Tap to view",
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ],
         ),
       ),
     );

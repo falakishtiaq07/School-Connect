@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 /// ============================================================
 /// OUTER SHELL — header + tab switcher + IndexedStack
@@ -278,16 +279,26 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
   void sendAbsentNotifications(String date) async {
     for (var student in students) {
       if (student['status'] == 'Absent') {
-        await FirebaseFirestore.instance.collection('notifications').add({
-          "userId": student['id'],
-          // Yahan date ko message mein add kar diya gaya hai
-          "message":
-              "Attendance Alert: You have been marked ABSENT in class '${widget.teacherClass}' on $date. Please ensure your attendance is maintained regularly. If you believe this attendance was marked by mistake, kindly contact your class teacher immediately.",
-          "type": "attendance",
-          "date": Timestamp.now(),
-          "createdAt": FieldValue.serverTimestamp(),
-          "isRead": false,
-        });
+        DocumentReference notifRef = await FirebaseFirestore.instance
+            .collection('notifications')
+            .add({
+              "userId": student['id'],
+              "message":
+                  "Attendance Alert: You have been marked ABSENT in class '${widget.teacherClass}' on $date. Please ensure your attendance is maintained regularly. If you believe this attendance was marked by mistake, kindly contact your class teacher immediately.",
+              "type": "attendance",
+              "date": Timestamp.now(),
+              "createdAt": FieldValue.serverTimestamp(),
+              "isRead": false,
+            });
+
+        await NotificationService.sendPushToUser(
+          userId: student['id'], // student ka Firebase UID
+          title: 'Attendance Marked',
+          body:
+              "You have been marked ABSENT in ${widget.teacherClass} on $date",
+          notificationType: 'attendance',
+          relatedId: notifRef.id,
+        );
       }
     }
   }

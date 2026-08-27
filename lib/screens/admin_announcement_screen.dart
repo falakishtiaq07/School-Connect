@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 class AdminAnnouncementsScreen extends StatefulWidget {
   const AdminAnnouncementsScreen({super.key});
@@ -101,6 +102,18 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         'attachment': fileUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      await NotificationService.sendPushNotification(
+        targetRole: 'teacher',
+        title: 'New Announcement',
+        body: titleController.text,
+        notificationType: 'announcement',
+      );
+      await NotificationService.sendPushNotification(
+        targetRole: 'student',
+        title: 'New Announcement',
+        body: titleController.text,
+        notificationType: 'announcement',
+      );
 
       titleController.clear();
       descController.clear();

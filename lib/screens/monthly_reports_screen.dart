@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'dart:typed_data';
 
+import 'package:school_connect/service/notification_service.dart';
+
 class MonthlyReportsScreen extends StatefulWidget {
   const MonthlyReportsScreen({super.key});
 
@@ -149,22 +151,30 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
       }
 
       // 3. Firestore Data Save
-      await FirebaseFirestore.instance.collection('monthly_reports').add({
-        'studentId': selectedStudentId,
-        'studentName': selectedStudentName,
-        'class': selectedClass,
-        'month': selectedMonth,
-        'overallPerformance': selectedPerformance,
-        'homeworkCompletion': selectedHomework,
-        'classParticipation': selectedParticipation,
-        'totalDays': totalDaysController.text,
-        'presentDays': presentController.text,
-        'absentDays': absentController.text,
-        'remarks': remarksController.text,
-        'attachmentUrls': uploadedImageUrls, // List of URLs save hogi
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
+      DocumentReference reportRef = await FirebaseFirestore.instance
+          .collection('monthly_reports')
+          .add({
+            'studentId': selectedStudentId,
+            'studentName': selectedStudentName,
+            'class': selectedClass,
+            'month': selectedMonth,
+            'overallPerformance': selectedPerformance,
+            'homeworkCompletion': selectedHomework,
+            'classParticipation': selectedParticipation,
+            'totalDays': totalDaysController.text,
+            'presentDays': presentController.text,
+            'absentDays': absentController.text,
+            'remarks': remarksController.text,
+            'attachmentUrls': uploadedImageUrls, // List of URLs save hogi
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+      await NotificationService.sendPushNotification(
+        targetRole: 'student',
+        title: 'Monthly Report Available',
+        body: 'Your report card for $selectedMonth is ready to view.',
+        notificationType: 'report',
+        relatedId: reportRef.id,
+      );
       // 4. Fields Reset Logic
       _formKey.currentState!.reset();
 

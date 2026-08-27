@@ -3,8 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as xl;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:school_connect/screens/add_users_screen.dart';
+import 'package:school_connect/service/email_verification_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MANAGE USERS SCREEN
@@ -94,6 +96,36 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     );
   }
 
+  Future<UserCredential> _createUserAndSendVerification({
+    required String email,
+    required String password,
+  }) async {
+    final String tempAppName =
+        'bulkCreateUser_${DateTime.now().millisecondsSinceEpoch}';
+
+    final FirebaseApp tempApp = await Firebase.initializeApp(
+      name: tempAppName,
+      options: Firebase.app().options,
+    );
+
+    try {
+      final FirebaseAuth tempAuth = FirebaseAuth.instanceFor(app: tempApp);
+
+      final UserCredential credential = await tempAuth
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      // Verification email send karo
+      await credential.user!.sendEmailVerification();
+
+      // Temporary session logout
+      await tempAuth.signOut();
+
+      return credential;
+    } finally {
+      await tempApp.delete();
+    }
+  }
+
   Future<void> _importExcel(Uint8List bytes) async {
     final excel = xl.Excel.decodeBytes(bytes);
     final sheet = excel.tables[excel.tables.keys.first];
@@ -164,6 +196,12 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
         if (mounted) setState(() => _importProgress++);
         continue;
       }
+      bool isRealEmail = await EmailVerificationService.isEmailValid(email);
+      if (!isRealEmail) {
+        _skipped.add('$label ($email) — email does not exist');
+        if (mounted) setState(() => _importProgress++);
+        continue;
+      }
       if (role != 'Teacher' && role != 'Student') {
         _skipped.add('$label ($email) — invalid role "$role"');
         if (mounted) setState(() => _importProgress++);
@@ -192,7 +230,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
 
       // ── Create Firebase Auth user ───────────────────────────────────────
       try {
-        final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        final cred = await _createUserAndSendVerification(
           email: email,
           password: password,
         );

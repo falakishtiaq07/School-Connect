@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:school_connect/service/notification_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SendLeaveRequestPage extends StatefulWidget {
@@ -161,22 +162,32 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
       }
       if (mounted) setState(() => _isUploadingAttachment = false);
     }
-
     try {
-      await FirebaseFirestore.instance.collection('leave_requests').add({
-        "studentName": _studentName,
-        "rollNo": _rollNo,
-        "class": _studentClass,
-        "leaveType": _selectedType,
-        "fromDate": Timestamp.fromDate(_fromDate!),
-        "toDate": Timestamp.fromDate(_toDate!),
-        "reason": _reasonController.text.trim(),
-        "status": "Pending",
-        "createdAt": FieldValue.serverTimestamp(),
-        'studentId': FirebaseAuth.instance.currentUser!.uid,
-        "attachmentUrl": attachmentUrl ?? "",
-        "attachmentType": attachmentType ?? "",
-      });
+      DocumentReference leaveRef = await FirebaseFirestore.instance
+          .collection('leave_requests')
+          .add({
+            "studentName": _studentName,
+            "rollNo": _rollNo,
+            "class": _studentClass,
+            "leaveType": _selectedType,
+            "fromDate": Timestamp.fromDate(_fromDate!),
+            "toDate": Timestamp.fromDate(_toDate!),
+            "reason": _reasonController.text.trim(),
+            "status": "Pending",
+            "createdAt": FieldValue.serverTimestamp(),
+            'studentId': FirebaseAuth.instance.currentUser!.uid,
+            "attachmentUrl": attachmentUrl ?? "",
+            "attachmentType": attachmentType ?? "",
+          });
+
+      await NotificationService.sendPushNotification(
+        targetRole: 'admin',
+        title: 'New Leave Request',
+        body: '$_studentName sent a leave request',
+        notificationType: 'leave_request',
+        relatedId: leaveRef.id,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -184,6 +195,7 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
             backgroundColor: Colors.green,
           ),
         );
+
         _reasonController.clear();
         setState(() {
           _fromDate = null;

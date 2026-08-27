@@ -10,6 +10,8 @@ import 'package:school_connect/screens/view_homework_screen.dart';
 import 'package:school_connect/screens/view_reports_screen.dart';
 import 'package:school_connect/screens/welcome_screen.dart';
 import 'package:school_connect/screens/student_profile_screen.dart';
+import 'package:school_connect/screens/upload_paid_receipt_screen.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   const StudentDashboardScreen({super.key});
@@ -75,6 +77,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
+              await OneSignal.logout();
               await FirebaseAuth.instance.signOut();
               if (ctx.mounted) {
                 Navigator.pushAndRemoveUntil(
@@ -168,6 +171,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
       onPressed: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => ViewChallanScreen()),
+      ),
+    ),
+    _CardData(
+      icon: Icons.cloud_upload_outlined,
+      title: 'Upload Paid Receipt',
+      description: 'Upload your fee payment receipt and verify status.',
+      buttonText: 'Upload Receipt',
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => StudentPaymentReceiptScreen()),
       ),
     ),
   ];

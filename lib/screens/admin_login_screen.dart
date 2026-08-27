@@ -2,8 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:school_connect/auth/forgot_password_screen.dart';
 import 'package:school_connect/screens/admin_dashboard_screen.dart';
-//import 'package:school_connect/auth/forgot_password_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
@@ -192,7 +193,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                                   .toLowerCase();
 
                               if (userRole == 'admin') {
-                                // ✅ Agar admin hai toh login successfully karne dein
+                                if (!kIsWeb) {
+                                  await OneSignal.login(uid);
+                                  await OneSignal.User.addTagWithKey(
+                                    "role",
+                                    userRole,
+                                  );
+                                }
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(

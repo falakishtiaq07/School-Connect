@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:school_connect/screens/pdf_service_screen.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 class BulkGenerateChallanScreen extends StatefulWidget {
   const BulkGenerateChallanScreen({super.key});
@@ -26,8 +26,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   bool _isLoadingStudents = false;
 
   final List<String> _grades = [
-    'Nursery',
-    'KG',
     '1',
     '2',
     '3',
@@ -263,6 +261,7 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
       final student = _students[idx];
       final rollNo = student['roll_no']?.toString() ?? '';
       final name = student['student_name']?.toString() ?? '';
+      final challanNo = 'CH-${DateTime.now().year}-${rollNo}-${idx + 1}';
       final fatherName = student['father_name']?.toString() ?? '';
       final grade = student['grade']?.toString() ?? '';
 
@@ -297,6 +296,7 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
         schoolAddress: schoolAddress,
         schoolPhone: schoolPhone,
         kuickpayId: kuickpayId,
+        challanNo: challanNo,
         rollNo: rollNo,
         studentName: name,
         fatherName: fatherName,
@@ -323,8 +323,11 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
 
       // ── 3. Save to Firestore challans collection (roll_no verified) ──
       if (pdfUrl != null) {
-        await fs.collection('challans').add({
-          'roll_no': rollNo, // key for student verification
+        final challanRef = fs.collection('challans').doc();
+
+        await challanRef.set({
+          'challan_no': challanNo,
+          'roll_no': rollNo,
           'student_name': name,
           'father_name': fatherName,
           'grade': grade,
@@ -332,13 +335,20 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           'issue_date': _fmtDate(_issueDate),
           'due_date': _fmtDate(_dueDate),
           'valid_till': _fmtDate(_validTill),
-          'pdf_url': pdfUrl, // Cloudinary link
+          'pdf_url': pdfUrl,
           'school_fee': fees['school_fee'] ?? 0,
           'transport_fee': fees['transport_fee'] ?? 0,
           'total_fee': challanData.totalAmount,
           'created_at': FieldValue.serverTimestamp(),
           'status': 'unpaid',
         });
+        await NotificationService.sendPushNotification(
+          targetRole: 'student',
+          title: 'New Fee Challan',
+          body: 'Your fee challan for $_selectedMonth has been generated.',
+          notificationType: 'challan',
+          relatedId: challanRef.id,
+        );
         _genSaved++;
         _saveResults.add(
           _ChallanSaveResult(

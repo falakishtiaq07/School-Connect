@@ -20,22 +20,23 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
   final _studentNameController = TextEditingController();
   final _fatherNameController = TextEditingController();
   final _classSectionController = TextEditingController();
-  final _kuickpayChargesController = TextEditingController(text: '30');
 
   // School Info (pre-filled from Firestore settings)
   String _schoolName = '';
   String _schoolAddress = '';
   String _schoolPhone = '';
   String _kuickpayId = '';
-
+  String _challanNo = '';
   // Dates
   DateTime _issueDate = DateTime.now();
   DateTime _dueDate = DateTime.now().add(const Duration(days: 15));
   DateTime _validTill = DateTime.now().add(const Duration(days: 30));
   String _selectedMonth = _currentMonthYear();
-
+  double _schoolFee = 0;
+  double _transportFee = 0;
+  bool _isStudentLoaded = false;
+  String _studentDocId = '';
   // Fee Particulars
-  final List<Map<String, TextEditingController>> _feeRows = [];
 
   static String _currentMonthYear() {
     final months = [
@@ -79,7 +80,6 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
   void initState() {
     super.initState();
     _loadSchoolSettings();
-    _addFeeRow(); // Default one fee row
   }
 
   Future<void> _loadSchoolSettings() async {
@@ -107,30 +107,49 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
     }
   }
 
-  void _addFeeRow() {
-    setState(() {
-      _feeRows.add({
-        'particular': TextEditingController(text: 'Fee ($_selectedMonth)'),
-        'amount': TextEditingController(),
-      });
-    });
-  }
-
-  void _removeFeeRow(int index) {
-    if (_feeRows.length > 1) {
-      _feeRows[index]['particular']!.dispose();
-      _feeRows[index]['amount']!.dispose();
-      setState(() => _feeRows.removeAt(index));
-    }
-  }
-
   double get _totalAmount {
-    double total = 0;
-    for (var row in _feeRows) {
-      total += double.tryParse(row['amount']!.text) ?? 0;
+    return _schoolFee + _transportFee;
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+
+    if (value is num) {
+      return value.toDouble();
     }
-    total += double.tryParse(_kuickpayChargesController.text) ?? 0;
-    return total;
+
+    return double.tryParse(value.toString()) ?? 0;
+  }
+
+  Future<String?> _generateChallanNo(String rollNo, String grade) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('student_profile')
+          .where('grade', isEqualTo: grade)
+          .orderBy('roll_no')
+          .get();
+
+      int index = -1;
+
+      for (int i = 0; i < snap.docs.length; i++) {
+        final studentRoll = snap.docs[i].data()['roll_no']?.toString() ?? '';
+
+        if (studentRoll == rollNo) {
+          index = i;
+          break;
+        }
+      }
+
+      if (index == -1) {
+        return null;
+      }
+
+      // EXACT SAME LOGIC AS BULK SCREEN
+      return 'CH-${DateTime.now().year}-${rollNo}-${index + 1}';
+    } catch (e) {
+      debugPrint('Challan number generation error: $e');
+      return null;
+    }
   }
 
   Future<void> _pickDate(String type) async {
@@ -187,9 +206,20 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
 
   Future<void> _searchStudent() async {
     final rollNo = _rollNoController.text.trim();
-    if (rollNo.isEmpty) return;
 
-    setState(() => _isLoading = true);
+    if (rollNo.isEmpty) {
+      _showSnack('Please enter Admission No.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _isStudentLoaded = false;
+      _challanNo = '';
+      _schoolFee = 0;
+      _transportFee = 0;
+    });
+
     try {
       final query = await FirebaseFirestore.instance
           .collection('student_profile')
@@ -197,30 +227,87 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
           .limit(1)
           .get();
 
-      if (query.docs.isNotEmpty && mounted) {
-        final data = query.docs.first.data();
-        setState(() {
-          _studentNameController.text = data['name'] ?? '';
-          _fatherNameController.text = data['father_name'] ?? '';
-          _classSectionController.text =
-              '${data['grade'] ?? ''} - ${data['section'] ?? ''}';
-        });
-      } else if (mounted) {
-        _showSnack('Student not found with this admission number.');
+      if (query.docs.isEmpty) {
+        if (mounted) {
+          _showSnack('Student not found with this admission number.');
+        }
+        return;
       }
+
+      final doc = query.docs.first;
+      final data = doc.data();
+
+      final studentName =
+          data['student_name']?.toString() ?? data['name']?.toString() ?? '';
+
+      final fatherName = data['father_name']?.toString() ?? '';
+      final grade = data['grade']?.toString() ?? '';
+      final section = data['section']?.toString() ?? '';
+
+      // ── SAME FEES STRUCTURE AS BULK SCREEN ──
+      final feesRaw = data['fees'];
+
+      final fees = feesRaw is Map
+          ? Map<String, dynamic>.from(feesRaw)
+          : <String, dynamic>{};
+
+      final schoolFee = _toDouble(fees['school_fee']);
+      final transportFee = _toDouble(fees['transport_fee']);
+
+      // ── SAME CHALLAN NUMBER LOGIC AS BULK ──
+      final challanNo = await _generateChallanNo(rollNo, grade);
+
+      if (challanNo == null) {
+        if (mounted) {
+          _showSnack('Unable to generate challan number for this student.');
+        }
+        return;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _studentDocId = doc.id;
+
+        _studentNameController.text = studentName;
+        _fatherNameController.text = fatherName;
+        _classSectionController.text = section.isEmpty
+            ? grade
+            : '$grade - $section';
+
+        _schoolFee = schoolFee;
+        _transportFee = transportFee;
+
+        _challanNo = challanNo;
+
+        _isStudentLoaded = true;
+      });
+
+      _showSnack('Student loaded. Challan No: $_challanNo');
     } catch (e) {
-      if (mounted) _showSnack('Error fetching student: $e');
+      if (mounted) {
+        _showSnack('Error fetching student: $e');
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _generateChallan() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (!_isStudentLoaded || _challanNo.isEmpty) {
+      _showSnack('Please search and load a student first.');
+      return;
+    }
+
     setState(() => _isGenerating = true);
+
     try {
       final challanData = ChallanData(
+        challanNo: _challanNo,
         schoolName: _schoolName,
         schoolAddress: _schoolAddress,
         schoolPhone: _schoolPhone,
@@ -233,19 +320,23 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
         issueDate: _formatDate(_issueDate),
         dueDate: _formatDate(_dueDate),
         validTill: _formatDate(_validTill),
-        feeParticulars: _feeRows.map((row) {
-          return FeeParticular(
-            name: row['particular']!.text.trim(),
-            amount: double.tryParse(row['amount']!.text) ?? 0,
-          );
-        }).toList(),
+
+        // EXACTLY LIKE BULK
+        feeParticulars: [
+          FeeParticular(name: 'School Fee', amount: _schoolFee),
+          FeeParticular(name: 'Transport Fee', amount: _transportFee),
+        ].where((f) => f.amount > 0).toList(),
       );
 
       await ChallanPdfService.generateAndShare(challanData);
     } catch (e) {
-      if (mounted) _showSnack('Error generating challan: $e');
+      if (mounted) {
+        _showSnack('Error generating challan: $e');
+      }
     } finally {
-      if (mounted) setState(() => _isGenerating = false);
+      if (mounted) {
+        setState(() => _isGenerating = false);
+      }
     }
   }
 
@@ -256,8 +347,14 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
   Future<void> _previewChallan() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (!_isStudentLoaded || _challanNo.isEmpty) {
+      _showSnack('Please search and load a student first.');
+      return;
+    }
+
     try {
       final challanData = ChallanData(
+        challanNo: _challanNo,
         schoolName: _schoolName,
         schoolAddress: _schoolAddress,
         schoolPhone: _schoolPhone,
@@ -270,12 +367,12 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
         issueDate: _formatDate(_issueDate),
         dueDate: _formatDate(_dueDate),
         validTill: _formatDate(_validTill),
-        feeParticulars: _feeRows.map((row) {
-          return FeeParticular(
-            name: row['particular']!.text.trim(),
-            amount: double.tryParse(row['amount']!.text) ?? 0,
-          );
-        }).toList(),
+
+        // SAME AS BULK
+        feeParticulars: [
+          FeeParticular(name: 'School Fee', amount: _schoolFee),
+          FeeParticular(name: 'Transport Fee', amount: _transportFee),
+        ].where((f) => f.amount > 0).toList(),
       );
 
       final pdfBytes = await ChallanPdfService.generatePdf(challanData);
@@ -289,6 +386,8 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -301,11 +400,7 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
     _studentNameController.dispose();
     _fatherNameController.dispose();
     _classSectionController.dispose();
-    _kuickpayChargesController.dispose();
-    for (var row in _feeRows) {
-      row['particular']!.dispose();
-      row['amount']!.dispose();
-    }
+
     super.dispose();
   }
 
@@ -600,80 +695,38 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
       icon: Icons.receipt_long_outlined,
       child: Column(
         children: [
-          // Header row
-          Row(
-            children: const [
-              Expanded(
-                flex: 5,
-                child: Text(
-                  'Particular',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF6B7280),
+          _feeDisplayRow('School Fee', _schoolFee),
+          const Divider(height: 1),
+
+          _feeDisplayRow('Transport Fee', _transportFee),
+
+          const Divider(height: 1),
+
+          const SizedBox(height: 8),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F0FE),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFBFD0F0)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Color(0xFF1E3A5F), size: 16),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Fee is automatically fetched from the student record, same as Bulk Challan.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF1E3A5F),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  'Amount (Rs.)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-              ),
-              SizedBox(width: 36),
-            ],
-          ),
-          const Divider(height: 16),
-          // Dynamic rows
-          ...List.generate(_feeRows.length, (i) => _feeRowWidget(i)),
-          const SizedBox(height: 12),
-          // Kuickpay Charges row (fixed)
-          Row(
-            children: [
-              const Expanded(
-                flex: 5,
-                child: Text(
-                  'Kuickpay Charges',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF374151),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: _buildField(
-                  label: '',
-                  controller: _kuickpayChargesController,
-                  hint: '30',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-              const SizedBox(width: 36),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Add row button
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _addFeeRow,
-              icon: const Icon(
-                Icons.add_circle_outline,
-                size: 18,
-                color: _accentColor,
-              ),
-              label: const Text(
-                'Add Fee Row',
-                style: TextStyle(color: _accentColor),
-              ),
+              ],
             ),
           ),
         ],
@@ -681,42 +734,28 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
     );
   }
 
-  Widget _feeRowWidget(int index) {
+  Widget _feeDisplayRow(String name, double amount) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            flex: 5,
-            child: _buildField(
-              label: '',
-              controller: _feeRows[index]['particular']!,
-              hint: 'e.g. Fee (May-2026)',
-              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+            child: Text(
+              name,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF374151),
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: _buildField(
-              label: '',
-              controller: _feeRows[index]['amount']!,
-              hint: '0',
-              keyboardType: TextInputType.number,
-              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-              onChanged: (_) => setState(() {}),
+          Text(
+            'Rs. ${amount.toStringAsFixed(0)}',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1E3A5F),
             ),
-          ),
-          IconButton(
-            onPressed: () => _removeFeeRow(index),
-            icon: Icon(
-              Icons.remove_circle_outline,
-              color: _feeRows.length > 1
-                  ? Colors.red.shade400
-                  : Colors.grey.shade300,
-            ),
-            tooltip: 'Remove row',
           ),
         ],
       ),
@@ -767,17 +806,11 @@ class _GenerateChallanScreenState extends State<GenerateChallanScreen> {
   }
 
   List<Widget> _buildSummaryRows() {
-    List<Widget> rows = [];
-    for (var row in _feeRows) {
-      final name = row['particular']!.text;
-      final amt = double.tryParse(row['amount']!.text) ?? 0;
-      if (name.isNotEmpty) {
-        rows.add(_summaryRow(name, amt));
-      }
-    }
-    final kpAmt = double.tryParse(_kuickpayChargesController.text) ?? 0;
-    rows.add(_summaryRow('Kuickpay Charges', kpAmt));
-    return rows;
+    return [
+      if (_schoolFee > 0) _summaryRow('School Fee', _schoolFee),
+
+      if (_transportFee > 0) _summaryRow('Transport Fee', _transportFee),
+    ];
   }
 
   Widget _summaryRow(String label, double amount) {

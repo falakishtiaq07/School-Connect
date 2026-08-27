@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 class SubmitComplaintPage extends StatefulWidget {
   const SubmitComplaintPage({super.key});
@@ -66,6 +67,12 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
         "sendTo": "Admin",
         "createdAt": FieldValue.serverTimestamp(),
       });
+      await NotificationService.sendPushNotification(
+        targetRole: 'admin',
+        title: 'New Complaint',
+        body: '$_name has submitted a new complaint.',
+        notificationType: 'complaint',
+      );
       if (mounted) {
         _titleController.clear();
         _detailController.clear();

@@ -29,6 +29,9 @@ dependencies:
   gal: ^2.0.0 
   permission_handler: ^11.0.0
   path_provider: ^2.1.6
+  firebase_messaging: ^16.5.0
+  onesignal_flutter: ^5.2.4
+  
  
   
 
@@ -40,9 +43,31 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.4.4
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/school.png
+    - assets/app_icon.jpeg
+    - assets/logo.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.jpeg"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/app_icon.jpeg"
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/logo.png"
+  android: true
+  ios: true
+  web: true
+
+  android_12:
+    color: "#FFFFFF"
+    image: "assets/logo.png"

@@ -39,83 +39,9 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
   }
 
   void _showHomeworkDetails(BuildContext context, Map<String, dynamic> data) {
-    List<dynamic> attachments = data['attachments'] ?? [];
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(data['title'] ?? 'Homework Detail'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Description Section
-              const Text(
-                "Description:",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 5),
-              Text(data['description'] ?? "No description provided."),
-              const SizedBox(height: 15),
-
-              // Subject Details
-              Text(
-                "Subject: ${data['subject'] ?? 'N/A'}",
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 15),
-
-              // Attachments Section
-              if (attachments.isNotEmpty) ...[
-                const Text(
-                  "Attachments:",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: attachments.map((url) {
-                    bool isPdf = url.toString().toLowerCase().contains(".pdf");
-
-                    return InkWell(
-                      onTap: () => _viewImage(context, url),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.shade200),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              isPdf ? Icons.picture_as_pdf : Icons.image,
-                              color: isPdf ? Colors.red : Colors.blue,
-                              size: 40,
-                            ),
-                            Text(
-                              isPdf ? "PDF" : "View",
-                              style: const TextStyle(fontSize: 10),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Close"),
-          ),
-        ],
-      ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => HomeworkDetailScreen(data: data)),
     );
   }
 
@@ -357,6 +283,122 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class HomeworkDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const HomeworkDetailScreen({super.key, required this.data});
+
+  void _viewImage(BuildContext context, String imageUrl) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          backgroundColor: Colors.black,
+          body: Center(
+            child: InteractiveViewer(
+              panEnabled: true,
+              boundaryMargin: const EdgeInsets.all(20),
+              minScale: 0.5,
+              maxScale: 4,
+              child: Image.network(imageUrl),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    List<dynamic> attachments = data['attachments'] ?? [];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        elevation: 0,
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1E3A5F),
+        foregroundColor: Colors.white,
+        title: Text(
+          data['title'] ?? 'Homework Detail',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Description:",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              data['description'] ?? "No description provided.",
+              style: const TextStyle(fontSize: 15),
+            ),
+            const SizedBox(height: 20),
+
+            Text(
+              "Subject: ${data['subject'] ?? 'N/A'}",
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+            ),
+            const SizedBox(height: 20),
+
+            if (attachments.isNotEmpty) ...[
+              const Text(
+                "Attachments:",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: attachments.map((url) {
+                  bool isPdf = url.toString().toLowerCase().contains(".pdf");
+
+                  return InkWell(
+                    onTap: () => _viewImage(context, url),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            isPdf ? Icons.picture_as_pdf : Icons.image,
+                            color: isPdf ? Colors.red : Colors.blue,
+                            size: 40,
+                          ),
+                          Text(
+                            isPdf ? "PDF" : "View",
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
         ),
       ),
     );

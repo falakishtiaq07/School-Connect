@@ -6,8 +6,10 @@ import 'package:school_connect/screens/fee_management_screen.dart';
 import 'package:school_connect/screens/generate_challan_screen.dart';
 import 'package:school_connect/screens/manage_users_screen.dart';
 import 'package:school_connect/screens/resolve_complainrs_screen.dart';
+import 'package:school_connect/screens/verify_challan_screen.dart';
 import 'package:school_connect/screens/welcome_screen.dart';
 import 'package:school_connect/screens/admin_profile_screen.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -77,7 +79,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       title: 'Verify Challan',
       description: 'Cross-check paid receipts and update payment status.',
       buttonText: 'Verify Now',
-      onPressed: () {},
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const AdminVerifyChallanScreen()),
+      ),
     ),
   ];
 
@@ -99,6 +104,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
+              await OneSignal.logout();
               await FirebaseAuth.instance.signOut();
               if (ctx.mounted) {
                 Navigator.pushAndRemoveUntil(

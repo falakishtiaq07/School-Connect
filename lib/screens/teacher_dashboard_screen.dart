@@ -9,6 +9,7 @@ import 'package:school_connect/screens/teacher_profile_screen.dart';
 import 'package:school_connect/screens/list_of_students_screen.dart';
 import 'package:school_connect/screens/manage_leave_screen.dart';
 import 'package:school_connect/screens/post_homework_screen.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 class TeacherDashboardScreen extends StatefulWidget {
   const TeacherDashboardScreen({super.key});
@@ -76,6 +77,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
+              await OneSignal.logout();
               await FirebaseAuth.instance.signOut();
               if (ctx.mounted) {
                 Navigator.pushAndRemoveUntil(

@@ -12,6 +12,7 @@ class FeeParticular {
 }
 
 class ChallanData {
+  final String challanNo;
   final String schoolName;
   final String schoolAddress;
   final String schoolPhone;
@@ -30,6 +31,7 @@ class ChallanData {
       feeParticulars.fold(0.0, (sum, f) => sum + f.amount);
 
   const ChallanData({
+    required this.challanNo,
     required this.schoolName,
     required this.schoolAddress,
     required this.schoolPhone,
@@ -255,10 +257,10 @@ class ChallanPdfService {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
+                _iRow('Challan No', data.challanNo),
                 _iRow('Month', data.month),
                 _iRow('Issue Date', data.issueDate),
                 _iRow('Due Date', data.dueDate),
-                _iRow('Valid Till', data.validTill),
               ],
             ),
           ),

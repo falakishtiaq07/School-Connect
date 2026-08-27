@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:school_connect/service/email_verification_service.dart';
 
 class AddUserScreen extends StatefulWidget {
   const AddUserScreen({super.key});
@@ -62,6 +64,48 @@ class _AddUserScreenState extends State<AddUserScreen> {
         .get();
 
     return snapshot.docs.isNotEmpty;
+  }
+
+  // ------------------------------------------------------------------
+  // FIX: create the new user through a SECONDARY, temporary Firebase
+  // App instance. FirebaseAuth.instanceFor(app: tempApp) has its own
+  // isolated auth session, completely separate from the default app's
+  // FirebaseAuth.instance — so the Admin's login (on the default app)
+  // is never touched, replaced, or logged out. Once the new user is
+  // created we immediately sign that temp session out and delete the
+  // temp app, releasing its resources.
+  // ------------------------------------------------------------------
+  Future<UserCredential> _createUserWithoutSigningInAdminOut({
+    required String email,
+    required String password,
+  }) async {
+    final String tempAppName =
+        'createUserTemp_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Reuse the same project config (google-services.json /
+    // GoogleService-Info.plist / firebase_options.dart) as the main app.
+    final FirebaseApp tempApp = await Firebase.initializeApp(
+      name: tempAppName,
+      options: Firebase.app().options,
+    );
+
+    try {
+      final FirebaseAuth tempAuth = FirebaseAuth.instanceFor(app: tempApp);
+
+      final UserCredential credential = await tempAuth
+          .createUserWithEmailAndPassword(email: email, password: password);
+      await credential.user!.sendEmailVerification();
+
+      debugPrint("Verification email sent to: $email");
+
+      // Sign out of the temporary session (not the Admin's session).
+      await tempAuth.signOut();
+
+      return credential;
+    } finally {
+      // Always clean up the temporary app, even if creation throws.
+      await tempApp.delete();
+    }
   }
 
   @override
@@ -231,6 +275,45 @@ class _AddUserScreenState extends State<AddUserScreen> {
                             child: FilledButton(
                               onPressed: () async {
                                 if (_formKey.currentState!.validate()) {
+                                  showDialog(
+                                    context: context,
+                                    barrierDismissible: false,
+                                    builder: (context) => const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  );
+                                  print("🔥 EMAIL VALIDATION STARTED");
+                                  print(
+                                    "🔥 EMAIL: ${_emailController.text.trim()}",
+                                  );
+
+                                  bool isRealEmail =
+                                      await EmailVerificationService.isEmailValid(
+                                        _emailController.text.trim(),
+                                      );
+                                  print(
+                                    "🔥 EMAIL VALIDATION RESULT: $isRealEmail",
+                                  );
+                                  if (!isRealEmail) {
+                                    if (mounted) {
+                                      Navigator.pop(
+                                        context,
+                                      ); // loading dialog band karein
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            "Email does not exist. Please enter a valid email.",
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                    return;
+                                  }
+
+                                  if (mounted) Navigator.pop(context);
                                   bool emailExists = await checkEmailExists(
                                     _emailController.text.trim(),
                                   );
@@ -273,14 +356,16 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                   );
 
                                   try {
+                                    // FIX: use the secondary-app helper
+                                    // instead of
+                                    // FirebaseAuth.instance.createUserWithEmailAndPassword(),
+                                    // so the Admin stays signed in.
                                     UserCredential userCredential =
-                                        await FirebaseAuth.instance
-                                            .createUserWithEmailAndPassword(
-                                              email: _emailController.text
-                                                  .trim(),
-                                              password: _passwordController.text
-                                                  .trim(),
-                                            );
+                                        await _createUserWithoutSigningInAdminOut(
+                                          email: _emailController.text.trim(),
+                                          password: _passwordController.text
+                                              .trim(),
+                                        );
                                     final Map<String, dynamic> userData = {
                                       "uid": userCredential.user!.uid,
                                       "name": _nameController.text.trim(),
@@ -290,6 +375,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                       "password": _passwordController.text
                                           .trim(),
                                       "isPasswordChanged": false,
+                                      "emailVerified": false,
                                       "createdAt": FieldValue.serverTimestamp(),
                                     };
 
@@ -313,7 +399,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                       ).showSnackBar(
                                         const SnackBar(
                                           content: Text(
-                                            "User created successfully!",
+                                            "User created! Verification email has been sent. User must verify the email before logging in.",
                                           ),
                                         ),
                                       );

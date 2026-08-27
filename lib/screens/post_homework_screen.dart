@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 /// ============================================================
 /// OUTER SHELL — gradient header + custom tabs + IndexedStack
@@ -340,17 +341,26 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
       }
 
       // 2. Firestore mein data store karein
-      await FirebaseFirestore.instance.collection('homework').add({
-        'title': _titleController.text,
-        'description': _descController.text,
-        'class': teacherClass,
-        'subject': selectedSubject,
-        'assignedDate': assignedDate,
-        'dueDate': dueDate,
-        'attachments': uploadedFileUrls,
-        'timestamp': FieldValue.serverTimestamp(),
-        'teacherId': FirebaseAuth.instance.currentUser?.uid,
-      });
+      DocumentReference homeworkRef = await FirebaseFirestore.instance
+          .collection('homework')
+          .add({
+            'title': _titleController.text,
+            'description': _descController.text,
+            'class': teacherClass,
+            'subject': selectedSubject,
+            'assignedDate': assignedDate,
+            'dueDate': dueDate,
+            'attachments': uploadedFileUrls,
+            'timestamp': FieldValue.serverTimestamp(),
+            'teacherId': FirebaseAuth.instance.currentUser?.uid,
+          });
+      await NotificationService.sendPushNotification(
+        targetRole: 'student',
+        title: 'New Homework Assigned',
+        body: '${selectedSubject ?? "Subject"}: ${_titleController.text}',
+        notificationType: 'homework',
+        relatedId: homeworkRef.id,
+      );
 
       // 3. Form reset karein
       setState(() {
@@ -965,160 +975,10 @@ class _PostedHomeworkListBody extends StatelessWidget {
   }
 
   void _showHomeworkDetails(BuildContext context, Map<String, dynamic> data) {
-    final List attachments = data['attachments'] ?? [];
-
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 650, maxHeight: 700),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        "Homework Details",
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-
-                    IconButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 18),
-
-                Text(
-                  data['title'] ?? "",
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 15),
-
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _chip(Icons.class_rounded, "Class : ${data['class']}"),
-
-                    _chip(Icons.menu_book, "Subject : ${data['subject']}"),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xffF5F7FB),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Assigned Date : ${data['assignedDate'] != null ? DateFormat('dd/MM/yyyy').format((data['assignedDate'] as Timestamp).toDate()) : "N/A"}",
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      Text(
-                        "Due Date : ${data['dueDate'] != null ? DateFormat('dd/MM/yyyy').format((data['dueDate'] as Timestamp).toDate()) : "N/A"}",
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                const Text(
-                  "Description",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: navy,
-                    fontSize: 16,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xffF5F7FB),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    data['description'] ?? "No Description",
-                    style: const TextStyle(height: 1.6),
-                  ),
-                ),
-
-                if (attachments.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-
-                  const Text(
-                    "Attachments",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: navy,
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  ...attachments.map((url) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  FullScreenImagePage(imageUrl: url),
-                            ),
-                          );
-                        },
-
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            url,
-                            width: 180,
-                            height: 120,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ],
-              ],
-            ),
-          ),
-        ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TeacherHomeworkDetailScreen(data: data),
       ),
     );
   }
@@ -1193,6 +1053,165 @@ class FullScreenImagePage extends StatelessWidget {
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class TeacherHomeworkDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const TeacherHomeworkDetailScreen({super.key, required this.data});
+
+  static const Color navy = Color(0xFF1E3A5F);
+
+  Widget _chip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2E86AB).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFF2E86AB)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              color: Color(0xFF2E86AB),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List attachments = data['attachments'] ?? [];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        elevation: 0,
+        centerTitle: true,
+        backgroundColor: navy,
+        foregroundColor: Colors.white,
+        title: const Text(
+          "Homework Details",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              data['title'] ?? "",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _chip(Icons.class_rounded, "Class : ${data['class']}"),
+                _chip(Icons.menu_book, "Subject : ${data['subject']}"),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xffF5F7FB),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Assigned Date : ${data['assignedDate'] != null ? DateFormat('dd/MM/yyyy').format((data['assignedDate'] as Timestamp).toDate()) : "N/A"}",
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Due Date : ${data['dueDate'] != null ? DateFormat('dd/MM/yyyy').format((data['dueDate'] as Timestamp).toDate()) : "N/A"}",
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            const Text(
+              "Description",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: navy,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xffF5F7FB),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                data['description'] ?? "No Description",
+                style: const TextStyle(height: 1.6),
+              ),
+            ),
+
+            if (attachments.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              const Text(
+                "Attachments",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: navy,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              ...attachments.map((url) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => FullScreenImagePage(imageUrl: url),
+                        ),
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        url,
+                        width: 180,
+                        height: 120,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ],
+          ],
         ),
       ),
     );
