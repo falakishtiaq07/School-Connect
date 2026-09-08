@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:school_connect/service/read_status_service.dart';
 
 class ViewAnnouncementsScreen extends StatefulWidget {
   const ViewAnnouncementsScreen({super.key});
@@ -15,6 +16,7 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
   bool isLoading = true;
   bool isSelectionMode = false;
   Set<String> selectedIds = {};
+  Set<String> readAnnouncementIds = {};
 
   @override
   void initState() {
@@ -24,26 +26,43 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
 
   Future<void> loadUserRole() async {
     try {
-      String uid = FirebaseAuth.instance.currentUser!.uid;
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        setState(() => isLoading = false);
+        return;
+      }
+
+      final userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(uid)
+          .doc(user.uid)
           .get();
+
       if (userDoc.exists) {
+        final data = userDoc.data() as Map<String, dynamic>;
+
+        final readIds = await ReadStatusService.getReadIds(
+          type: 'announcement',
+        );
+
+        if (!mounted) return;
+
         setState(() {
-          userRole = (userDoc.data() as Map<String, dynamic>)['role']
-              .toString()
-              .toLowerCase();
+          userRole = data['role'].toString().toLowerCase();
+          readAnnouncementIds = readIds;
           isLoading = false;
         });
       }
     } catch (e) {
-      setState(() => isLoading = false);
+      debugPrint('Error loading user role/read status: $e');
+
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
   Future<void> deleteSelectedAnnouncements() async {
-    // 1. Pehle Confirmation Dialog dikhayein
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -68,7 +87,6 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
       ),
     );
 
-    // 2. Agar user ne 'Delete' click kiya (confirm == true), tabhi delete karein
     if (confirm == true) {
       for (String id in selectedIds) {
         await FirebaseFirestore.instance
@@ -81,7 +99,6 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
         selectedIds.clear();
       });
 
-      // Optional: Success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Selected announcements deleted successfully"),
@@ -335,6 +352,10 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
                           final String id = doc.id;
                           final data = doc.data() as Map<String, dynamic>;
                           final bool isSelected = selectedIds.contains(id);
+                          final bool isUnread = !readAnnouncementIds.contains(
+                            id,
+                          );
+
                           Timestamp? timestamp =
                               data['createdAt'] as Timestamp?;
                           DateTime date = timestamp?.toDate() ?? DateTime.now();
@@ -361,7 +382,7 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
                             ),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(18),
-                              onTap: () {
+                              onTap: () async {
                                 if (isSelectionMode) {
                                   setState(() {
                                     if (isSelected) {
@@ -371,13 +392,21 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
                                     }
                                   });
                                 } else {
-                                  Navigator.push(
+                                  await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) =>
-                                          AnnouncementDetailScreen(data: data),
+                                      builder: (_) => AnnouncementDetailScreen(
+                                        data: data,
+                                        announcementId: id,
+                                      ),
                                     ),
                                   );
+
+                                  if (!mounted) return;
+
+                                  setState(() {
+                                    readAnnouncementIds.add(id);
+                                  });
                                 }
                               },
 
@@ -424,14 +453,38 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            data['title'] ?? "No Title",
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                          Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  data['title'] ?? "No Title",
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 17,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+
+                                              if (isUnread)
+                                                Container(
+                                                  width: 10,
+                                                  height: 10,
+                                                  margin: const EdgeInsets.only(
+                                                    left: 8,
+                                                    top: 5,
+                                                  ),
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                        color: Colors.red,
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                ),
+                                            ],
                                           ),
 
                                           const SizedBox(height: 10),
@@ -538,34 +591,75 @@ class FullScreenImagePage extends StatelessWidget {
   }
 }
 
-class AnnouncementDetailScreen extends StatelessWidget {
+class AnnouncementDetailScreen extends StatefulWidget {
   final Map<String, dynamic> data;
+  final String announcementId;
 
-  const AnnouncementDetailScreen({super.key, required this.data});
+  const AnnouncementDetailScreen({
+    super.key,
+    required this.data,
+    required this.announcementId,
+  });
+
+  @override
+  State<AnnouncementDetailScreen> createState() =>
+      _AnnouncementDetailScreenState();
+}
+
+class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    // Announcement open hote hi read mark ho jayegi
+    _markAnnouncementAsRead();
+  }
+
+  Future<void> _markAnnouncementAsRead() async {
+    try {
+      await ReadStatusService.markAsRead(
+        type: 'announcement',
+        itemId: widget.announcementId,
+      );
+    } catch (e) {
+      debugPrint('Announcement read error: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final data = widget.data;
+
     Timestamp? timestamp = data['createdAt'] as Timestamp?;
     DateTime date = timestamp?.toDate() ?? DateTime.now();
 
+    final String? attachment = data['attachment']?.toString();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
+
       appBar: AppBar(
         elevation: 0,
         centerTitle: true,
         backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
+
         title: const Text(
           "Announcement Details",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+
           children: [
-            /// Title Value
+            // ─────────────────────────────────────────────
+            // TITLE
+            // ─────────────────────────────────────────────
             Text(
               data['title'] ?? "No Title",
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -573,7 +667,9 @@ class AnnouncementDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            /// Date
+            // ─────────────────────────────────────────────
+            // DATE
+            // ─────────────────────────────────────────────
             Row(
               children: [
                 const Icon(
@@ -581,7 +677,9 @@ class AnnouncementDetailScreen extends StatelessWidget {
                   size: 16,
                   color: Colors.grey,
                 ),
+
                 const SizedBox(width: 6),
+
                 Text(
                   "${date.day}/${date.month}/${date.year}",
                   style: const TextStyle(color: Colors.grey, fontSize: 13),
@@ -591,7 +689,9 @@ class AnnouncementDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 25),
 
-            /// Description
+            // ─────────────────────────────────────────────
+            // DESCRIPTION
+            // ─────────────────────────────────────────────
             const Text(
               "Description",
               style: TextStyle(
@@ -605,11 +705,14 @@ class AnnouncementDetailScreen extends StatelessWidget {
 
             Container(
               width: double.infinity,
+
               padding: const EdgeInsets.all(14),
+
               decoration: BoxDecoration(
                 color: const Color(0xFFF5F7FB),
                 borderRadius: BorderRadius.circular(12),
               ),
+
               child: Text(
                 data['description'] ?? "No description",
                 style: const TextStyle(fontSize: 14, height: 1.6),
@@ -618,9 +721,10 @@ class AnnouncementDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 22),
 
-            /// Attachment
-            if (data['attachment'] != null &&
-                data['attachment'].toString().trim().isNotEmpty) ...[
+            // ─────────────────────────────────────────────
+            // ATTACHMENT
+            // ─────────────────────────────────────────────
+            if (attachment != null && attachment.trim().isNotEmpty) ...[
               const Text(
                 "Attachment",
                 style: TextStyle(
@@ -634,22 +738,58 @@ class AnnouncementDetailScreen extends StatelessWidget {
 
               InkWell(
                 borderRadius: BorderRadius.circular(12),
+
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          FullScreenImagePage(imageUrl: data['attachment']),
+                      builder: (_) => FullScreenImagePage(imageUrl: attachment),
                     ),
                   );
                 },
+
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
+
                   child: Image.network(
-                    data['attachment'],
+                    attachment,
+
                     width: 180,
                     height: 120,
+
                     fit: BoxFit.cover,
+
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) {
+                        return child;
+                      }
+
+                      return const SizedBox(
+                        width: 180,
+                        height: 120,
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    },
+
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 180,
+                        height: 120,
+
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+
+                        child: const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            size: 35,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

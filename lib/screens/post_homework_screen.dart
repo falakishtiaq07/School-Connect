@@ -7,12 +7,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:school_connect/service/notification_service.dart';
 
 /// ============================================================
 /// OUTER SHELL — gradient header + custom tabs + IndexedStack
-/// (keeps both tab bodies alive so state isn't lost on switch)
 /// ============================================================
 class HomeworkManagementScreen extends StatefulWidget {
   const HomeworkManagementScreen({super.key});
@@ -23,7 +21,7 @@ class HomeworkManagementScreen extends StatefulWidget {
 }
 
 class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
-  int _selectedTab = 0; // 0 = Post Homework, 1 = Posted Homework
+  int _selectedTab = 0; // 0 = Post Diary, 1 = Posted Diary
 
   // ---- Dashboard theme ----
   static const Color navy = Color(0xFF1E3A5F);
@@ -50,6 +48,7 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final double hPad = _horizontalPadding(constraints.maxWidth);
+
             return Column(
               children: [
                 _buildTabSelector(hPad),
@@ -86,7 +85,7 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            "Homework Management",
+            "Homework Diary",
             style: TextStyle(
               color: Colors.white,
               fontSize: 19,
@@ -119,7 +118,7 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
         children: [
           Expanded(
             child: _tabButton(
-              label: "New Homework",
+              label: "Post Diary",
               emoji: "📚",
               selected: _selectedTab == 0,
               onTap: () => setState(() => _selectedTab = 0),
@@ -128,7 +127,7 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _tabButton(
-              label: "Posted Homework",
+              label: "Posted Diary",
               emoji: "📄",
               selected: _selectedTab == 1,
               onTap: () => setState(() => _selectedTab = 1),
@@ -186,8 +185,7 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
 }
 
 /// ============================================================
-/// TAB 1 — POST HOMEWORK
-/// (logic identical to the original PostHomeworkScreen)
+/// TAB 1 — POST CLASS DIARY
 /// ============================================================
 class _PostHomeworkBody extends StatefulWidget {
   final VoidCallback onViewPosted;
@@ -204,28 +202,17 @@ class _PostHomeworkBody extends StatefulWidget {
 
 class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
   final _formKey = GlobalKey<FormState>();
+
   final TextEditingController _titleController = TextEditingController();
+
   final TextEditingController _descController = TextEditingController();
+
   final cloudinary = CloudinaryPublic('dkjsza6pw', 'ml_default', cache: false);
 
   String? teacherClass;
-  String? selectedSubject;
-  DateTime? assignedDate;
-  DateTime? dueDate;
   bool isLoading = false;
 
   List<PlatformFile> pickedFiles = [];
-  final List<String> subjects = [
-    "Mathematics",
-    "Physics",
-    "Chemistry",
-    "Biology",
-    "English",
-    "Urdu",
-    "Computer Science",
-    "History",
-    "Islamiyat",
-  ];
 
   static const Color navy = Color(0xFF1E3A5F);
   static const Color borderColor = Color(0xFFE5E7EB);
@@ -236,68 +223,114 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     _fetchTeacherData();
   }
 
+  /// ==========================================================
+  /// FETCH TEACHER CLASS AUTOMATICALLY
+  /// ==========================================================
   Future<void> _fetchTeacherData() async {
     try {
       User? user = FirebaseAuth.instance.currentUser;
+
       if (user != null) {
-        var doc = await FirebaseFirestore.instance
+        final doc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .get();
+
         if (doc.exists) {
+          if (!mounted) return;
+
           setState(() {
             teacherClass = doc.data()?['class'] ?? "N/A";
             isLoading = false;
           });
+        } else {
+          if (!mounted) return;
+
+          setState(() {
+            teacherClass = "N/A";
+            isLoading = false;
+          });
         }
+      } else {
+        if (!mounted) return;
+
+        setState(() {
+          teacherClass = "N/A";
+          isLoading = false;
+        });
       }
     } catch (e) {
-      setState(() => isLoading = false);
-    }
-  }
+      if (!mounted) return;
 
-  Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.pickFiles(
-      allowMultiple: true,
-      withData: true, // Web ke liye zaroori
-    );
-
-    if (result != null) {
-      List<PlatformFile> validFiles = [];
-      for (var file in result.files) {
-        if (file.size <= 10 * 1024 * 1024) {
-          validFiles.add(file);
-        }
-      }
-      setState(() => pickedFiles.addAll(validFiles));
-    }
-  }
-
-  Future<void> _pickDate(bool isAssigned) async {
-    DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2030),
-    );
-    if (picked != null) {
       setState(() {
-        if (isAssigned) {
-          assignedDate = picked;
-        } else {
-          dueDate = picked;
-        }
+        teacherClass = "N/A";
+        isLoading = false;
       });
     }
   }
 
+  /// ==========================================================
+  /// PICK FILES
+  /// ==========================================================
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.pickFiles(
+        allowMultiple: true,
+        withData: true,
+      );
+
+      if (result != null) {
+        List<PlatformFile> validFiles = [];
+
+        for (var file in result.files) {
+          if (file.size <= 10 * 1024 * 1024) {
+            validFiles.add(file);
+          }
+        }
+
+        if (validFiles.isNotEmpty) {
+          setState(() {
+            pickedFiles.addAll(validFiles);
+          });
+        }
+
+        if (result.files.length != validFiles.length && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Some files were skipped because they exceed 10 MB.",
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("File selection error: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// ==========================================================
+  /// SUBMIT CLASS DIARY
+  /// ==========================================================
   Future<void> _submitForm() async {
-    // 1. Validation check
     if (!_formKey.currentState!.validate()) return;
-    if (selectedSubject == null || assignedDate == null || dueDate == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Please fill all fields!")));
+
+    if (teacherClass == null ||
+        teacherClass!.isEmpty ||
+        teacherClass == "N/A") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Teacher class could not be loaded."),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -306,7 +339,9 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     try {
       List<String> uploadedFileUrls = [];
 
-      // Cloudinary configuration (Unsigned preset 'homework_images' use kar rahe hain)
+      /// --------------------------------------------------------
+      /// CLOUDINARY UPLOAD
+      /// --------------------------------------------------------
       final cloudinary = CloudinaryPublic(
         'dkjsza6pw',
         'homework_images',
@@ -317,10 +352,10 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
         CloudinaryResponse response;
 
         if (kIsWeb) {
-          // WEB KE LIYE: Base64 string use karein
+          if (file.bytes == null) continue;
+
           String base64Str = base64Encode(file.bytes!);
 
-          // Data URI format purane versions ke liye behtareen hai
           response = await cloudinary.uploadFile(
             CloudinaryFile.fromFile(
               "data:application/octet-stream;base64,$base64Str",
@@ -329,7 +364,8 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
             ),
           );
         } else {
-          // MOBILE KE LIYE: File path use karein
+          if (file.path == null) continue;
+
           response = await cloudinary.uploadFile(
             CloudinaryFile.fromFile(
               file.path!,
@@ -337,61 +373,87 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
             ),
           );
         }
+
         uploadedFileUrls.add(response.secureUrl);
       }
 
-      // 2. Firestore mein data store karein
-      DocumentReference homeworkRef = await FirebaseFirestore.instance
+      DocumentReference diaryRef = await FirebaseFirestore.instance
           .collection('homework')
           .add({
-            'title': _titleController.text,
-            'description': _descController.text,
+            'title': _titleController.text.trim(),
+            'description': _descController.text.trim(),
             'class': teacherClass,
-            'subject': selectedSubject,
-            'assignedDate': assignedDate,
-            'dueDate': dueDate,
             'attachments': uploadedFileUrls,
             'timestamp': FieldValue.serverTimestamp(),
             'teacherId': FirebaseAuth.instance.currentUser?.uid,
           });
-      await NotificationService.sendPushNotification(
-        targetRole: 'student',
-        title: 'New Homework Assigned',
-        body: '${selectedSubject ?? "Subject"}: ${_titleController.text}',
-        notificationType: 'homework',
-        relatedId: homeworkRef.id,
-      );
 
-      // 3. Form reset karein
+      /// --------------------------------------------------------
+      /// NOTIFICATION
+      /// --------------------------------------------------------
+      /// --------------------------------------------------------
+      /// NOTIFICATION
+      /// --------------------------------------------------------
+      try {
+        final studentsSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('role', isEqualTo: 'Student')
+            .where('class', isEqualTo: teacherClass)
+            .get();
+
+        final studentUids = studentsSnap.docs
+            .map((d) => (d.data()['uid'] ?? d.id).toString())
+            .toList();
+
+        await NotificationService.sendPushToUsers(
+          userIds: studentUids,
+          title: 'New Class Diary',
+          body: _titleController.text.trim(),
+          notificationType: 'homework',
+          relatedId: diaryRef.id,
+        );
+      } catch (notificationError) {
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+      }
+
+      /// --------------------------------------------------------
+      /// FORM RESET
+      /// --------------------------------------------------------
+      if (!mounted) return;
+
       setState(() {
         _titleController.clear();
         _descController.clear();
         pickedFiles.clear();
-        assignedDate = null;
-        dueDate = null;
-        selectedSubject = null;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Homework Posted Successfully!"),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Class Diary Posted Successfully!"),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Upload Error: $e"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Upload Error: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      if (mounted) setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descController.dispose();
+    super.dispose();
   }
 
   @override
@@ -407,6 +469,9 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  /// ==================================================
+                  /// CLASS INFORMATION
+                  /// ==================================================
                   _sectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,81 +484,56 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                           "Assigned Class",
                           teacherClass ?? "Loading...",
                         ),
-                        const SizedBox(height: 15),
-                        DropdownButtonFormField<String>(
-                          initialValue: selectedSubject,
-                          decoration: _inputDecoration("Select Subject *"),
-                          items: subjects
-                              .map(
-                                (s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)),
-                              )
-                              .toList(),
-                          onChanged: (val) =>
-                              setState(() => selectedSubject = val),
-                          validator: (val) => val == null ? "Required" : null,
-                        ),
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
+                  /// ==================================================
+                  /// DIARY DETAILS
+                  /// ==================================================
                   _sectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _sectionHeader(
-                          "Homework Details",
+                          "Diary Details",
                           Icons.assignment_rounded,
                         ),
+
                         TextFormField(
                           maxLength: 100,
                           controller: _titleController,
-                          decoration: _inputDecoration("Homework Title *"),
+                          decoration: _inputDecoration("Diary Title *"),
                           validator: (val) =>
-                              (val?.isEmpty ?? true) ? "Required" : null,
+                              (val?.trim().isEmpty ?? true) ? "Required" : null,
                         ),
+
                         const SizedBox(height: 8),
+
                         TextFormField(
                           controller: _descController,
-                          maxLines: 4,
+                          maxLines: 5,
                           decoration: _inputDecoration(
                             "Description / Instructions",
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDateInput(
-                                "Assigned Date",
-                                assignedDate,
-                                () => _pickDate(true),
-                                () => setState(() => assignedDate = null),
-                              ),
-                            ),
-                            const SizedBox(width: 15),
-                            Expanded(
-                              child: _buildDateInput(
-                                "Due Date",
-                                dueDate,
-                                () => _pickDate(false),
-                                () => setState(() => dueDate = null),
-                              ),
-                            ),
-                          ],
-                        ),
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
+                  /// ==================================================
+                  /// ATTACHMENT
+                  /// ==================================================
                   _sectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _sectionHeader(
-                          "Attachment (Optional)",
-                          Icons.attach_file_rounded,
-                        ),
+                        _sectionHeader("Attachment", Icons.attach_file_rounded),
+
                         DottedBorder(
                           options: RoundedRectDottedBorderOptions(
                             color: navy.withOpacity(0.35),
@@ -520,6 +560,7 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                                       size: 38,
                                       color: navy,
                                     ),
+
                                     SizedBox(
                                       width: 160,
                                       child: Text(
@@ -530,6 +571,7 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                                         ),
                                       ),
                                     ),
+
                                     OutlinedButton.icon(
                                       style: OutlinedButton.styleFrom(
                                         foregroundColor: navy,
@@ -540,7 +582,7 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                                           ),
                                         ),
                                       ),
-                                      onPressed: _pickFile,
+                                      onPressed: isLoading ? null : _pickFile,
                                       icon: const Icon(
                                         Icons.upload_rounded,
                                         size: 18,
@@ -549,8 +591,10 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                                     ),
                                   ],
                                 ),
+
                                 if (pickedFiles.isNotEmpty)
                                   const SizedBox(height: 12),
+
                                 ...pickedFiles.map(
                                   (f) => Container(
                                     margin: const EdgeInsets.only(top: 8),
@@ -570,7 +614,9 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                                           color: navy,
                                           size: 20,
                                         ),
+
                                         const SizedBox(width: 10),
+
                                         Expanded(
                                           child: Text(
                                             f.name,
@@ -580,15 +626,20 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                                             ),
                                           ),
                                         ),
+
                                         IconButton(
                                           icon: const Icon(
                                             Icons.close_rounded,
                                             color: Colors.red,
                                             size: 20,
                                           ),
-                                          onPressed: () => setState(
-                                            () => pickedFiles.remove(f),
-                                          ),
+                                          onPressed: isLoading
+                                              ? null
+                                              : () {
+                                                  setState(() {
+                                                    pickedFiles.remove(f);
+                                                  });
+                                                },
                                         ),
                                       ],
                                     ),
@@ -601,7 +652,12 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 24),
+
+                  /// ==================================================
+                  /// BUTTONS
+                  /// ==================================================
                   Row(
                     children: [
                       Expanded(
@@ -614,11 +670,15 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: isLoading
+                              ? null
+                              : () => Navigator.pop(context),
                           child: const Text("Cancel"),
                         ),
                       ),
+
                       const SizedBox(width: 15),
+
                       Expanded(
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
@@ -640,7 +700,7 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
                                     strokeWidth: 2.2,
                                   ),
                                 )
-                              : const Text("Post Homework"),
+                              : const Text("Post Diary"),
                         ),
                       ),
                     ],
@@ -651,6 +711,9 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
           );
   }
 
+  /// ============================================================
+  /// INPUT DECORATION
+  /// ============================================================
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
@@ -667,6 +730,9 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     );
   }
 
+  /// ============================================================
+  /// SECTION CARD
+  /// ============================================================
   Widget _sectionCard({required Widget child}) {
     return Container(
       width: double.infinity,
@@ -687,6 +753,9 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     );
   }
 
+  /// ============================================================
+  /// SECTION HEADER
+  /// ============================================================
   Widget _sectionHeader(String title, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
@@ -714,6 +783,9 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     );
   }
 
+  /// ============================================================
+  /// READ ONLY CLASS FIELD
+  /// ============================================================
   Widget _buildReadOnlyField(String label, String value) {
     return InputDecorator(
       decoration: _inputDecoration(
@@ -728,43 +800,14 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
       ),
     );
   }
-
-  Widget _buildDateInput(
-    String label,
-    DateTime? date,
-    VoidCallback onTap,
-    VoidCallback onClear,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: InputDecorator(
-        decoration: _inputDecoration(label).copyWith(
-          suffixIcon: date != null
-              ? IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  onPressed: onClear,
-                )
-              : const Icon(Icons.calendar_today_rounded, size: 16, color: navy),
-        ),
-        child: Text(
-          date == null ? "Select Date" : DateFormat('dd MMM yyyy').format(date),
-          style: TextStyle(
-            color: date == null ? Colors.grey.shade600 : Colors.black87,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// ============================================================
-/// TAB 2 — POSTED HOMEWORK LIST
-/// (logic identical to the original TeacherHomeworkListScreen)
+/// TAB 2 — POSTED CLASS DIARY LIST
 /// ============================================================
 class _PostedHomeworkListBody extends StatelessWidget {
   final double horizontalPadding;
+
   const _PostedHomeworkListBody({required this.horizontalPadding});
 
   static const Color navy = Color(0xFF1E3A5F);
@@ -772,7 +815,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String? teacherId = FirebaseAuth.instance.currentUser?.uid;
     final double hPad = horizontalPadding;
 
     return StreamBuilder<QuerySnapshot>(
@@ -788,6 +830,20 @@ class _PostedHomeworkListBody extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: navy));
         }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                "Unable to load diary.\n${snapshot.error}",
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          );
+        }
+
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return _buildEmptyState();
         }
@@ -796,22 +852,20 @@ class _PostedHomeworkListBody extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 24),
           itemCount: snapshot.data!.docs.length,
           itemBuilder: (context, index) {
-            var doc = snapshot.data!.docs[index];
-            var data = doc.data() as Map<String, dynamic>;
+            final doc = snapshot.data!.docs[index];
 
-            String assignedDate = data['assignedDate'] != null
-                ? DateFormat(
-                    'dd MMM yyyy',
-                  ).format((data['assignedDate'] as Timestamp).toDate())
-                : "N/A";
+            final data = doc.data() as Map<String, dynamic>;
 
-            return _buildHomeworkCard(context, doc.id, data, assignedDate);
+            return _buildDiaryCard(context, doc.id, data);
           },
         );
       },
     );
   }
 
+  /// ============================================================
+  /// EMPTY STATE
+  /// ============================================================
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -824,11 +878,11 @@ class _PostedHomeworkListBody extends StatelessWidget {
               color: navy.withOpacity(0.08),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.assignment_outlined, size: 42, color: navy),
+            child: const Icon(Icons.menu_book_rounded, size: 42, color: navy),
           ),
           const SizedBox(height: 18),
           const Text(
-            "No Homework Posted Yet",
+            "No Diary Posted Yet",
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -837,7 +891,7 @@ class _PostedHomeworkListBody extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            "Homework you post will show up here.",
+            "Class diary you post will show up here.",
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
         ],
@@ -845,11 +899,13 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
-  Widget _buildHomeworkCard(
+  /// ============================================================
+  /// DIARY CARD
+  /// ============================================================
+  Widget _buildDiaryCard(
     BuildContext context,
     String docId,
     Map<String, dynamic> data,
-    String assignedDate,
   ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -884,12 +940,14 @@ class _PostedHomeworkListBody extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
-                    Icons.assignment_rounded,
+                    Icons.menu_book_rounded,
                     color: navy,
                     size: 20,
                   ),
                 ),
+
                 const SizedBox(width: 14),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -904,36 +962,35 @@ class _PostedHomeworkListBody extends StatelessWidget {
                           color: navy,
                         ),
                       ),
+
                       const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          _chip(Icons.class_rounded, "${data['class']}"),
-                          _chip(Icons.menu_book_rounded, "${data['subject']}"),
-                        ],
-                      ),
+
+                      _chip(Icons.class_rounded, "${data['class'] ?? 'N/A'}"),
+
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.event_rounded,
-                            size: 13,
-                            color: Colors.grey.shade500,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            "Assigned: $assignedDate",
-                            style: TextStyle(
-                              fontSize: 11.5,
+
+                      if (data['timestamp'] != null)
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.event_rounded,
+                              size: 13,
                               color: Colors.grey.shade500,
                             ),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(width: 4),
+                            Text(
+                              "Posted: ${_formatTimestamp(data['timestamp'])}",
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),
+
                 IconButton(
                   icon: const Icon(
                     Icons.delete_outline_rounded,
@@ -949,6 +1006,45 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
+  /// ============================================================
+  /// DATE FORMAT
+  /// ============================================================
+  String _formatTimestamp(dynamic timestamp) {
+    try {
+      if (timestamp is Timestamp) {
+        return _formatDate(timestamp.toDate());
+      }
+
+      return "N/A";
+    } catch (_) {
+      return "N/A";
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+
+    return "${date.day.toString().padLeft(2, '0')} "
+        "${months[date.month - 1]} "
+        "${date.year}";
+  }
+
+  /// ============================================================
+  /// CHIP
+  /// ============================================================
   Widget _chip(IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -974,6 +1070,9 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
+  /// ============================================================
+  /// DETAIL SCREEN
+  /// ============================================================
   void _showHomeworkDetails(BuildContext context, Map<String, dynamic> data) {
     Navigator.push(
       context,
@@ -983,16 +1082,19 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
+  /// ============================================================
+  /// DELETE
+  /// ============================================================
   void _confirmDelete(BuildContext context, String docId) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          "Delete Homework",
+          "Delete Diary",
           style: TextStyle(fontWeight: FontWeight.bold, color: navy),
         ),
-        content: const Text("Are you sure you want to delete this homework?"),
+        content: const Text("Are you sure you want to delete this diary?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1005,12 +1107,35 @@ class _PostedHomeworkListBody extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            onPressed: () {
-              FirebaseFirestore.instance
-                  .collection('homework')
-                  .doc(docId)
-                  .delete();
-              Navigator.pop(context);
+            onPressed: () async {
+              try {
+                await FirebaseFirestore.instance
+                    .collection('homework')
+                    .doc(docId)
+                    .delete();
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Diary deleted successfully."),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  Navigator.pop(context);
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Delete Error: $e"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text("Delete", style: TextStyle(color: Colors.white)),
           ),
@@ -1020,6 +1145,9 @@ class _PostedHomeworkListBody extends StatelessWidget {
   }
 }
 
+/// ============================================================
+/// FULL SCREEN IMAGE
+/// ============================================================
 class FullScreenImagePage extends StatelessWidget {
   final String imageUrl;
 
@@ -1029,24 +1157,21 @@ class FullScreenImagePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-
       body: Center(
         child: InteractiveViewer(
           minScale: .8,
           maxScale: 5,
-
           child: Image.network(
             imageUrl,
-
             fit: BoxFit.contain,
-
             loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
+              if (progress == null) {
+                return child;
+              }
 
               return const Center(
                 child: CircularProgressIndicator(color: Colors.white),
@@ -1059,37 +1184,15 @@ class FullScreenImagePage extends StatelessWidget {
   }
 }
 
+/// ============================================================
+/// TEACHER DIARY DETAIL SCREEN
+/// ============================================================
 class TeacherHomeworkDetailScreen extends StatelessWidget {
   final Map<String, dynamic> data;
 
   const TeacherHomeworkDetailScreen({super.key, required this.data});
 
   static const Color navy = Color(0xFF1E3A5F);
-
-  Widget _chip(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2E86AB).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: const Color(0xFF2E86AB)),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11.5,
-              color: Color(0xFF2E86AB),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1103,7 +1206,7 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
         backgroundColor: navy,
         foregroundColor: Colors.white,
         title: const Text(
-          "Homework Details",
+          "Diary Details",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
@@ -1112,44 +1215,45 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            /// ==================================================
+            /// TITLE
+            /// ==================================================
             Text(
               data['title'] ?? "",
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
+
             const SizedBox(height: 15),
 
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _chip(Icons.class_rounded, "Class : ${data['class']}"),
-                _chip(Icons.menu_book, "Subject : ${data['subject']}"),
-              ],
-            ),
+            /// ==================================================
+            /// CLASS
+            /// ==================================================
+            _chip(Icons.class_rounded, "Class : ${data['class'] ?? 'N/A'}"),
+
             const SizedBox(height: 20),
 
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xffF5F7FB),
-                borderRadius: BorderRadius.circular(12),
+            /// ==================================================
+            /// POSTED DATE
+            /// ==================================================
+            if (data['timestamp'] != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xffF5F7FB),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "Posted Date : ${_formatTimestamp(data['timestamp'])}",
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Assigned Date : ${data['assignedDate'] != null ? DateFormat('dd/MM/yyyy').format((data['assignedDate'] as Timestamp).toDate()) : "N/A"}",
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Due Date : ${data['dueDate'] != null ? DateFormat('dd/MM/yyyy').format((data['dueDate'] as Timestamp).toDate()) : "N/A"}",
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
 
+            if (data['timestamp'] != null) const SizedBox(height: 20),
+
+            /// ==================================================
+            /// DESCRIPTION
+            /// ==================================================
             const Text(
               "Description",
               style: TextStyle(
@@ -1158,6 +1262,7 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
                 fontSize: 16,
               ),
             ),
+
             const SizedBox(height: 10),
 
             Container(
@@ -1173,8 +1278,12 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
               ),
             ),
 
+            /// ==================================================
+            /// ATTACHMENTS
+            /// ==================================================
             if (attachments.isNotEmpty) ...[
               const SizedBox(height: 22),
+
               const Text(
                 "Attachments",
                 style: TextStyle(
@@ -1183,6 +1292,7 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
                   color: navy,
                 ),
               ),
+
               const SizedBox(height: 12),
 
               ...attachments.map((url) {
@@ -1194,14 +1304,15 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => FullScreenImagePage(imageUrl: url),
+                          builder: (_) =>
+                              FullScreenImagePage(imageUrl: url.toString()),
                         ),
                       );
                     },
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.network(
-                        url,
+                        url.toString(),
                         width: 180,
                         height: 120,
                         fit: BoxFit.cover,
@@ -1215,5 +1326,67 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// ============================================================
+  /// CHIP
+  /// ============================================================
+  Widget _chip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2E86AB).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFF2E86AB)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              color: Color(0xFF2E86AB),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ============================================================
+  /// TIMESTAMP FORMAT
+  /// ============================================================
+  String _formatTimestamp(dynamic timestamp) {
+    try {
+      if (timestamp is Timestamp) {
+        final date = timestamp.toDate();
+
+        const months = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+
+        return "${date.day.toString().padLeft(2, '0')} "
+            "${months[date.month - 1]} "
+            "${date.year}";
+      }
+
+      return "N/A";
+    } catch (_) {
+      return "N/A";
+    }
   }
 }

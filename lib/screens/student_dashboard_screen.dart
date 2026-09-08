@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,7 +12,9 @@ import 'package:school_connect/screens/view_reports_screen.dart';
 import 'package:school_connect/screens/welcome_screen.dart';
 import 'package:school_connect/screens/student_profile_screen.dart';
 import 'package:school_connect/screens/upload_paid_receipt_screen.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:school_connect/service/one_signal_service.dart';
+import 'package:school_connect/service/read_status_service.dart';
+import 'package:school_connect/service/unread_status_service.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   const StudentDashboardScreen({super.key});
@@ -27,14 +30,18 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   static const _bg = Color(0xFFF0F4F8);
   static const _white = Colors.white;
 
-  // ── Dynamic data — fetched from Firestore (logic unchanged) ───────────────
+  // ── Dynamic data — fetched from Firestore ──────────────────────────────
   String _userName = 'Loading...';
   String _userClass = '...';
+
+  // Declared missing variable for unread status
+  Map<String, dynamic> _unreadStatus = {};
 
   @override
   void initState() {
     super.initState();
     fetchUserData();
+    _loadUnreadStatus();
   }
 
   Future<void> fetchUserData() async {
@@ -53,10 +60,31 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 ? '${data['class']}'
                 : 'Class N/A';
           });
+
+          await OneSignalService.setupOneSignal(
+            user.uid,
+            'student',
+            studentClass: data['class']?.toString(),
+            forceRefresh: true,
+          );
         }
       }
     } catch (e) {
       debugPrint('Error fetching data: $e');
+    }
+  }
+
+  Future<void> _loadUnreadStatus() async {
+    try {
+      final status = await UnreadService.getUnreadStatus();
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadStatus = status;
+      });
+    } catch (e) {
+      debugPrint('Error loading unread status: $e');
     }
   }
 
@@ -72,23 +100,46 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         content: const Text('Are you sure you want to logout?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () {
+              Navigator.pop(ctx);
+            },
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () async {
-              await OneSignal.logout();
-              await FirebaseAuth.instance.signOut();
-              if (ctx.mounted) {
+              Navigator.pop(ctx);
+
+              try {
+                if (!kIsWeb) {
+                  await OneSignalService.logout();
+                }
+
+                await FirebaseAuth.instance.signOut();
+                debugPrint('Firebase logout successful');
+
+                if (!context.mounted) return;
+
                 Navigator.pushAndRemoveUntil(
-                  ctx,
+                  context,
                   MaterialPageRoute(builder: (_) => const WelcomeScreen()),
                   (route) => false,
+                );
+              } catch (e) {
+                debugPrint('Logout error: $e');
+
+                if (!context.mounted) return;
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Logout failed. Please try again.'),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                  ),
                 );
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
+              backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -101,27 +152,37 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  // ── Cards list (logic unchanged) ─────────────────────────────────────────
+  // ── Cards list ──────────────────────────────────────────────────────────
   List<_CardData> _cards(BuildContext context) => [
     _CardData(
-      icon: Icons.assignment_turned_in_outlined,
-      title: 'Attendance',
-      description: 'View your attendance record and alerts.',
-      buttonText: 'View Attendance',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const AttendanceAlertsScreen()),
-      ),
+      icon: Icons.notifications_active_outlined,
+      title: 'Attendance Alerts',
+      description: 'View your attendance updates and alerts.',
+      buttonText: 'View Alerts',
+      hasUnread: _unreadStatus['attendanceAlerts'] ?? false,
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AttendanceAlertsScreen()),
+        );
+
+        await _loadUnreadStatus();
+      },
     ),
     _CardData(
-      icon: Icons.campaign_outlined,
+      icon: Icons.announcement_outlined,
       title: 'Announcements',
-      description: 'View all school and class notices.',
-      buttonText: 'View Notices',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen()),
-      ),
+      description: 'View latest school announcements.',
+      buttonText: 'View Announcements',
+      hasUnread: _unreadStatus['announcements'] ?? false,
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen()),
+        );
+
+        await _loadUnreadStatus();
+      },
     ),
     _CardData(
       icon: Icons.rate_review_outlined,
@@ -148,15 +209,20 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
       title: 'Monthly Reports',
       description: 'Access your progress and attendance reports.',
       buttonText: 'View Reports',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const StudentReportViewScreen()),
-      ),
+      hasUnread: _unreadStatus['reports'] ?? false,
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const StudentReportViewScreen()),
+        );
+
+        await _loadUnreadStatus();
+      },
     ),
     _CardData(
       icon: Icons.report_problem_outlined,
       title: 'Submit Complaint',
-      description: 'Draft and submit school-related issues.',
+      description: 'Submit school-related issues or complaints.',
       buttonText: 'Post Complaint',
       onPressed: () => Navigator.push(
         context,
@@ -166,7 +232,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     _CardData(
       icon: Icons.receipt_long_outlined,
       title: 'View Challans',
-      description: 'Track, view and download your monthly fee challans.',
+      description: 'View and download your monthly fee challans.',
       buttonText: 'View Challans',
       onPressed: () => Navigator.push(
         context,
@@ -185,26 +251,19 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     ),
   ];
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 900;
-    final isTablet = screenWidth > 600;
     final isMobile = screenWidth <= 600;
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: _bg,
       drawer: _buildDrawer(),
-      // SafeArea wraps everything so content stays below status bar
       body: Column(
         children: [
           _buildHeader(isMobile),
-
           Expanded(
             child: SafeArea(
               top: false,
@@ -214,8 +273,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 4),
-
-                    // ── Title row + class badge ─────────────────────────────
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -244,7 +301,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                             ],
                           ),
                         ),
-                        // Class badge from Firestore
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -278,10 +334,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                       ],
                     ),
                     const SizedBox(height: 24),
-
-                    // ── Responsive cards ──────────────────────────────────────
                     if (isMobile)
-                      // Mobile: full-width ListView, no overflow
                       ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -292,7 +345,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         ),
                       )
                     else
-                      // Tablet/Desktop: GridView with safe aspect ratio
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -306,7 +358,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         itemBuilder: (_, i) =>
                             _buildGridCard(_cards(context)[i]),
                       ),
-
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -318,13 +369,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  // ── Header — responsive ────────────────────────────────────────────────────
   Widget _buildHeader(bool isMobile) {
     final statusBar = MediaQuery.of(context).padding.top;
-
     final initial = _userName.isNotEmpty && _userName != 'Loading...'
         ? _userName[0].toUpperCase()
         : 'S';
+
     return Container(
       padding: EdgeInsets.only(
         top: statusBar,
@@ -343,13 +393,11 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         ],
       ),
       child: isMobile
-          // ── Mobile: 2 rows ─────────────────────────────────────────────
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
-                    // Menu
                     InkWell(
                       onTap: () => _scaffoldKey.currentState?.openDrawer(),
                       borderRadius: BorderRadius.circular(8),
@@ -367,7 +415,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // Brand icon
                     Container(
                       padding: const EdgeInsets.all(5),
                       decoration: BoxDecoration(
@@ -396,7 +443,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                // Welcome row below brand on mobile
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -443,7 +489,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 ),
               ],
             )
-          // ── Desktop/Tablet: single row ─────────────────────────────────
           : Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -530,7 +575,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  // ── Drawer ────────────────────────────────────────────────────────────────
   Widget _buildDrawer() {
     final initial = _userName.isNotEmpty && _userName != 'Loading...'
         ? _userName[0].toUpperCase()
@@ -653,7 +697,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  // ── Grid card (tablet/desktop) ─────────────────────────────────────────────
   Widget _buildGridCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -687,14 +730,29 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2F7),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(card.icon, color: _navy, size: 22),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Tumhara existing icon container
+                      Container(
+                        // existing properties same rakho
+                        child: Icon(card.icon),
+                      ),
+
+                      if (card.hasUnread)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -749,7 +807,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  // ── Mobile card — horizontal layout, no overflow ever ─────────────────────
   Widget _buildMobileCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -783,14 +840,29 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2F7),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Icon(card.icon, color: _navy, size: 24),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Tumhara existing icon container
+                    Container(
+                      // existing properties same rakho
+                      child: Icon(card.icon),
+                    ),
+
+                    if (card.hasUnread)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -850,12 +922,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   }
 }
 
-// ── Data model ────────────────────────────────────────────────────────────────
 class _CardData {
   final IconData icon;
   final String title;
   final String description;
   final String buttonText;
+  final bool hasUnread;
   final VoidCallback onPressed;
 
   const _CardData({
@@ -863,6 +935,7 @@ class _CardData {
     required this.title,
     required this.description,
     required this.buttonText,
+    this.hasUnread = false,
     required this.onPressed,
   });
 }

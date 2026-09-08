@@ -6,7 +6,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:school_connect/screens/add_users_screen.dart';
-import 'package:school_connect/service/email_verification_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+String? getNextClass(String currentClass) {
+  final regex = RegExp(r'^(\d+)(.*)$');
+  final match = regex.firstMatch(currentClass.trim());
+  if (match == null) return null;
+
+  final currentNum = int.tryParse(match.group(1)!);
+  final suffix = match.group(2) ?? '';
+  if (currentNum == null || currentNum >= 10) return null;
+
+  return '${currentNum + 1}$suffix';
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MANAGE USERS SCREEN
@@ -43,25 +56,44 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
   List<DocumentSnapshot> _promoteStudents = [];
   Set<String> _promoteSelected = {};
   bool _loadingPromote = false;
+  List<String> _promoteClasses = [];
 
-  static const List<String> _classes = [
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '10',
-  ];
   static final _emailRx = RegExp(r'^[\w.+\-]+@[a-zA-Z\d\-]+\.[a-zA-Z]{2,}$');
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPromoteClasses();
+    _tab.addListener(() {
+      if (_tab.index == 1) _loadPromoteClasses();
+    });
+  }
 
   @override
   void dispose() {
     _tab.dispose();
     super.dispose();
+  }
+
+  Future<List<String>> _fetchAllStudentClasses() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'Student')
+        .get();
+
+    final classSet = <String>{};
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final cls = (data['class'] ?? '').toString().trim();
+      if (cls.isNotEmpty) classSet.add(cls);
+    }
+    final classes = classSet.toList()..sort();
+    return classes;
+  }
+
+  Future<void> _loadPromoteClasses() async {
+    final classes = await _fetchAllStudentClasses();
+    if (mounted) setState(() => _promoteClasses = classes);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -196,12 +228,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
         if (mounted) setState(() => _importProgress++);
         continue;
       }
-      bool isRealEmail = await EmailVerificationService.isEmailValid(email);
-      if (!isRealEmail) {
-        _skipped.add('$label ($email) — email does not exist');
-        if (mounted) setState(() => _importProgress++);
-        continue;
-      }
+
       if (role != 'Teacher' && role != 'Student') {
         _skipped.add('$label ($email) — invalid role "$role"');
         if (mounted) setState(() => _importProgress++);
@@ -291,8 +318,15 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
 
   Future<void> _promoteSelected_() async {
     if (_promoteClass == null || _promoteSelected.isEmpty) return;
-    final from = int.parse(_promoteClass!);
-    final toClass = '${from + 1}';
+
+    final toClass = getNextClass(_promoteClass!);
+    if (toClass == null) {
+      _snack(
+        'Automatic promotion isn\'t supported for Class $_promoteClass. Please update this class manually.',
+        isError: true,
+      );
+      return;
+    }
 
     final ok = await _confirm(
       title: 'Promote ${_promoteSelected.length} Student(s)?',
@@ -316,8 +350,15 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
 
   Future<void> _promoteAll() async {
     if (_promoteClass == null || _promoteStudents.isEmpty) return;
-    final from = int.parse(_promoteClass!);
-    final toClass = '${from + 1}';
+
+    final toClass = getNextClass(_promoteClass!);
+    if (toClass == null) {
+      _snack(
+        'Automatic promotion isn\'t supported for Class $_promoteClass. Please update this class manually.',
+        isError: true,
+      );
+      return;
+    }
 
     final ok = await _confirm(
       title: 'Promote All ${_promoteStudents.length} Students?',
@@ -351,6 +392,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     final d = doc.data() as Map<String, dynamic>;
     final role = d['role']?.toString() ?? 'user';
     final name = d['name']?.toString() ?? 'this user';
+    final uid = d['uid']?.toString() ?? doc.id; // User ka unique ID
 
     final ok = await _confirm(
       title: 'Remove ${role == 'Teacher' ? 'Teacher' : 'Student'}?',
@@ -361,8 +403,29 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       btnColor: _red,
     );
     if (!ok) return;
-    await doc.reference.delete();
-    _snack('"$name" removed.');
+
+    try {
+      // Vercel live backend URL with correct file path (/api/delete_user)
+      final url = Uri.parse(
+        'https://admin-backend-six-delta.vercel.app/api/delete_user',
+      );
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid}),
+      );
+
+      if (response.statusCode == 200) {
+        // Agar server se delete ho gaya, toh Firestore se bhi doc hata dein
+        await doc.reference.delete();
+        _snack('"$name" removed successfully.');
+      } else {
+        _snack('Failed to delete user: ${response.body}', isError: true);
+      }
+    } catch (e) {
+      _snack('Error: $e', isError: true);
+    }
   }
 
   Future<void> _deleteClass(String cls) async {
@@ -386,14 +449,201 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     await batch.commit();
     _snack('Class $cls — ${snap.docs.length} student(s) deleted.');
   }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EDIT STUDENT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _showEditTeacherDialog(DocumentSnapshot doc) async {
+    final d = doc.data() as Map<String, dynamic>;
+
+    final nameCtrl = TextEditingController(text: d['name']?.toString() ?? '');
+    final emailCtrl = TextEditingController(text: d['email']?.toString() ?? '');
+    final rollCtrl = TextEditingController(text: d['rollNo']?.toString() ?? '');
+    final classCtrl = TextEditingController(text: d['class']?.toString() ?? '');
+    String? errorText;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, ss) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          titlePadding: EdgeInsets.zero,
+          title: _dialogTitle('Edit Student', Icons.edit_outlined),
+          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          content: SizedBox(
+            width: 320,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: _inDeco('Full Name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: _inDeco('Email'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: rollCtrl,
+                    decoration: _inDeco('Roll Number'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: classCtrl,
+                    decoration: _inDeco('Class / Section (e.g. 5-Green)'),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        errorText!,
+                        style: const TextStyle(color: _red, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _navy,
+                            side: const BorderSide(color: _navy),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final name = nameCtrl.text.trim();
+                            final email = emailCtrl.text.trim();
+                            final roll = rollCtrl.text.trim();
+                            final cls = classCtrl.text.trim();
+
+                            if (name.isEmpty ||
+                                email.isEmpty ||
+                                roll.isEmpty ||
+                                cls.isEmpty) {
+                              ss(() => errorText = 'All fields are required.');
+                              return;
+                            }
+                            if (!_emailRx.hasMatch(email)) {
+                              ss(() => errorText = 'Enter a valid email.');
+                              return;
+                            }
+
+                            Navigator.pop(ctx);
+                            await doc.reference.update({
+                              'name': name,
+                              'email': email,
+                              'rollNo': roll,
+                              'class': cls,
+                            });
+                            _snack('"$name" updated.');
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _navy,
+                            foregroundColor: _white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text(
+                            'Update',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    nameCtrl.dispose();
+    emailCtrl.dispose();
+    rollCtrl.dispose();
+    classCtrl.dispose();
+  }
+
+  Future<void> _showEditStudentDialog(DocumentSnapshot doc) async {
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return _EditStudentDialog(
+          doc: doc,
+          onSave: (values) async {
+            try {
+              await doc.reference.update({
+                'name': values['name'],
+                'email': values['email'],
+                'rollNo': values['rollNo'],
+                'class': values['class'],
+              });
+              return true;
+            } catch (e) {
+              return false;
+            }
+          },
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (result == 'updated') {
+      final d = doc.data() as Map<String, dynamic>;
+      final name = d['name']?.toString() ?? 'Student';
+      _snack('"$name" updated successfully.');
+      // Agar aapka koi refresh function hai, jaise _loadFirstPage() ya setState, wo yahan call kar lein
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ASSIGN TEACHER CLASS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  void _showAssignDialog(DocumentSnapshot doc) {
+  Future<void> _showAssignDialog(DocumentSnapshot doc) async {
     final d = doc.data() as Map<String, dynamic>;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          const Center(child: CircularProgressIndicator(color: _navy)),
+    );
+
+    final availableClasses = await _fetchAllStudentClasses();
+    final currentAssigned = List<String>.from(d['assignedClasses'] ?? []);
+
+    if (!mounted) return;
+    Navigator.pop(context); // close loading spinner
+
     String? picked;
+
     showDialog(
       context: context,
       builder: (_) => StatefulBuilder(
@@ -408,22 +658,68 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
           ),
           contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           content: SizedBox(
-            width: 300,
+            width: 320,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<String>(
-                  value: picked,
-                  hint: const Text('Select class'),
-                  items: _classes
-                      .map(
-                        (c) =>
-                            DropdownMenuItem(value: c, child: Text('Class $c')),
+                if (currentAssigned.isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Currently assigned:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: currentAssigned.map((c) {
+                      return Chip(
+                        label: Text(c, style: const TextStyle(fontSize: 11)),
+                        deleteIcon: const Icon(Icons.close, size: 14),
+                        backgroundColor: _navy.withOpacity(0.08),
+                        onDeleted: () async {
+                          await doc.reference.update({
+                            'assignedClasses': FieldValue.arrayRemove([c]),
+                          });
+                          ss(() => currentAssigned.remove(c));
+                          _snack('Removed Class $c from ${d['name']}.');
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                availableClasses.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'No classes found yet — add students with a class first.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                        ),
                       )
-                      .toList(),
-                  onChanged: (v) => ss(() => picked = v),
-                  decoration: _inDeco('Select class'),
-                ),
+                    : DropdownButtonFormField<String>(
+                        value: picked,
+                        hint: const Text('Select class to add'),
+                        items: availableClasses
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c,
+                                child: Text('Class $c'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => ss(() => picked = v),
+                        decoration: _inDeco('Select class'),
+                      ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -439,7 +735,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         child: const Text(
-                          'Cancel',
+                          'Close',
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -459,7 +755,11 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
                                   btnColor: _accent,
                                 );
                                 if (!ok) return;
-                                await doc.reference.update({'class': picked});
+                                await doc.reference.update({
+                                  'assignedClasses': FieldValue.arrayUnion([
+                                    picked,
+                                  ]),
+                                });
                                 _snack(
                                   '"${d['name']}" assigned to Class $picked.',
                                 );
@@ -521,12 +821,12 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
                         children: [
                           _StudentsTab(
                             onDelete: _deleteUser,
+                            onEdit: _showEditStudentDialog,
                             isMobile: isMob,
-                            classes: _classes,
                             onDeleteClass: _deleteClass,
                           ),
                           _PromoteTab(
-                            classes: _classes.where((c) => c != '10').toList(),
+                            classes: _promoteClasses,
                             promoteClass: _promoteClass,
                             students: _promoteStudents,
                             selected: _promoteSelected,
@@ -923,7 +1223,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
 // ═══════════════════════════════════════════════════════════════════════════
 // STATS BAR — realtime Firestore counts
 // ═══════════════════════════════════════════════════════════════════════════
-
 class _StatsBar extends StatelessWidget {
   final bool isMobile, isTablet, isDesktop;
   const _StatsBar({
@@ -973,21 +1272,25 @@ class _StatsBar extends StatelessWidget {
 
         return Container(
           color: const Color(0xFFF0F4F8),
-          padding: EdgeInsets.fromLTRB(16, 12, 16, isMobile ? 8 : 12),
+          padding: EdgeInsets.fromLTRB(16, 10, 16, isMobile ? 8 : 12),
           child: isMobile
-              // Mobile: vertical column
-              ? Column(
-                  children: cards
-                      .map(
-                        (c) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: c,
-                        ),
-                      )
-                      .toList(),
+              ? SizedBox(
+                  // Mobile: Height ko 75 se barha kar 85 kar diya taake overflow na ho
+                  height: 85,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: cards
+                        .map(
+                          (c) => Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: SizedBox(width: 140, child: c),
+                          ),
+                        )
+                        .toList(),
+                  ),
                 )
               : isTablet
-              // Tablet: 2+1
+              // Tablet: 2+1 layout
               ? Column(
                   children: [
                     Row(
@@ -1036,7 +1339,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1052,51 +1355,59 @@ class _StatCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: Icon(icon, color: color, size: 18),
           ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: color,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min, // Overflow rokne ke liye zaroori hai
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Text(
-                label,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
-              ),
-            ],
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF6B7280),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 }
-
 // ═══════════════════════════════════════════════════════════════════════════
 // STUDENTS TAB
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _StudentsTab extends StatefulWidget {
   final Future<void> Function(DocumentSnapshot) onDelete;
+  final void Function(DocumentSnapshot) onEdit;
   final Future<void> Function(String) onDeleteClass;
-  final List<String> classes;
   final bool isMobile;
   const _StudentsTab({
     required this.onDelete,
+    required this.onEdit,
     required this.onDeleteClass,
-    required this.classes,
     required this.isMobile,
   });
   @override
@@ -1183,31 +1494,68 @@ class _StudentsTabState extends State<_StudentsTab> {
         ),
         const Divider(height: 1, color: Color(0xFFE5E7EB)),
 
-        // Class list
+        // Class list — built live from Firestore, no hardcoded classes
         Expanded(
           child: _searchQ.isEmpty
-              ? ListView(
-                  padding: const EdgeInsets.all(14),
-                  children: widget.classes
-                      .map(
-                        (cls) => _ClassTile(
-                          cls: cls,
-                          isOpen: _openClass == cls,
-                          searchQ: '',
-                          isMobile: widget.isMobile,
-                          onToggle: () => setState(
-                            () => _openClass = _openClass == cls ? null : cls,
+              ? StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .where('role', isEqualTo: 'Student')
+                      .snapshots(),
+                  builder: (_, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: _navy),
+                      );
+                    }
+                    final docs = snap.data?.docs ?? [];
+                    final classSet = <String>{};
+                    for (final doc in docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final cls = (data['class'] ?? '').toString().trim();
+                      if (cls.isNotEmpty) classSet.add(cls);
+                    }
+                    final classList = classSet.toList()..sort();
+
+                    if (classList.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No student classes found yet.',
+                            style: TextStyle(color: Color(0xFF9CA3AF)),
                           ),
-                          onDeleteUser: widget.onDelete,
-                          onDeleteClass: () => widget.onDeleteClass(cls),
                         ),
-                      )
-                      .toList(),
+                      );
+                    }
+
+                    return ListView(
+                      padding: const EdgeInsets.all(14),
+                      children: classList
+                          .map(
+                            (cls) => _ClassTile(
+                              cls: cls,
+                              isOpen: _openClass == cls,
+                              searchQ: '',
+                              isMobile: widget.isMobile,
+                              onToggle: () => setState(
+                                () =>
+                                    _openClass = _openClass == cls ? null : cls,
+                              ),
+                              onDeleteUser: widget.onDelete,
+                              onEditUser: widget.onEdit,
+                              onDeleteClass: () => widget.onDeleteClass(cls),
+                            ),
+                          )
+                          .toList(),
+                    );
+                  },
                 )
               : _SearchStudentsList(
                   searchQ: _searchQ,
                   isMobile: widget.isMobile,
                   onDelete: widget.onDelete,
+                  onEdit: widget.onEdit,
                 ),
         ),
       ],
@@ -1223,8 +1571,10 @@ class _ClassTile extends StatelessWidget {
   final String searchQ;
   final VoidCallback onToggle, onDeleteClass;
   final Future<void> Function(DocumentSnapshot) onDeleteUser;
+  final void Function(DocumentSnapshot) onEditUser;
 
   static const _navy = Color(0xFF1E3A5F);
+  static const _accent = Color(0xFF2E86AB);
   static const _red = Color(0xFFDC3545);
   static const _bg = Color(0xFFF0F4F8);
 
@@ -1236,6 +1586,7 @@ class _ClassTile extends StatelessWidget {
     required this.onToggle,
     required this.onDeleteClass,
     required this.onDeleteUser,
+    required this.onEditUser,
   });
 
   @override
@@ -1342,33 +1693,6 @@ class _ClassTile extends StatelessWidget {
                   );
                 }
                 var docs = snap.data?.docs ?? [];
-                // if (searchQ.isNotEmpty) {
-                //   docs = docs.where((d) {
-                //     final data = d.data() as Map<String, dynamic>;
-                //     return (data['name'] ?? '')
-                //             .toString()
-                //             .toLowerCase()
-                //             .contains(searchQ) ||
-                //         (data['rollNo'] ?? '')
-                //             .toString()
-                //             .toLowerCase()
-                //             .contains(searchQ);
-                //   }).toList();
-                // }
-                // if (docs.isEmpty) {
-                //   return Padding(
-                //     padding: const EdgeInsets.all(16),
-                //     child: Text(
-                //       searchQ.isNotEmpty
-                //           ? 'No students match "$searchQ"'
-                //           : 'No students in Class $cls.',
-                //       style: const TextStyle(
-                //         color: Color(0xFF9CA3AF),
-                //         fontSize: 13,
-                //       ),
-                //     ),
-                //   );
-                // }
                 if (docs.isEmpty) {
                   return Padding(
                     padding: const EdgeInsets.all(16),
@@ -1468,6 +1792,16 @@ class _ClassTile extends StatelessWidget {
                                 ),
                               ),
                               IconButton(
+                                onPressed: () => onEditUser(doc),
+                                icon: const Icon(
+                                  Icons.edit_outlined,
+                                  color: _accent,
+                                  size: 18,
+                                ),
+                                padding: const EdgeInsets.all(4),
+                                constraints: const BoxConstraints(),
+                              ),
+                              IconButton(
                                 onPressed: () => onDeleteUser(doc),
                                 icon: const Icon(
                                   Icons.delete_outline,
@@ -1496,14 +1830,17 @@ class _SearchStudentsList extends StatelessWidget {
   final String searchQ;
   final bool isMobile;
   final Future<void> Function(DocumentSnapshot) onDelete;
+  final void Function(DocumentSnapshot) onEdit;
 
   const _SearchStudentsList({
     required this.searchQ,
     required this.isMobile,
     required this.onDelete,
+    required this.onEdit,
   });
 
   static const _navy = Color(0xFF1E3A5F);
+  static const _accent = Color(0xFF2E86AB);
   static const _red = Color(0xFFDC3545);
 
   @override
@@ -1557,9 +1894,18 @@ class _SearchStudentsList extends StatelessWidget {
                 subtitle: Text(
                   'Roll# ${d['rollNo']}   •   Class ${d['class']}',
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: _red),
-                  onPressed: () => onDelete(doc),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, color: _accent),
+                      onPressed: () => onEdit(doc),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: _red),
+                      onPressed: () => onDelete(doc),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -1604,7 +1950,7 @@ class _PromoteTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final toClass = promoteClass != null
-        ? '${int.parse(promoteClass!) + 1}'
+        ? (getNextClass(promoteClass!) ?? '—')
         : '?';
 
     return SingleChildScrollView(
@@ -1618,12 +1964,14 @@ class _PromoteTab extends StatelessWidget {
             title: 'Select Class to Promote',
             child: DropdownButtonFormField<String>(
               value: promoteClass,
-              hint: const Text('Select class (1–9)'),
+              hint: const Text('Select class'),
               items: classes
                   .map(
                     (c) => DropdownMenuItem(
                       value: c,
-                      child: Text('Class $c → Class ${int.parse(c) + 1}'),
+                      child: Text(
+                        'Class $c → Class ${getNextClass(c) ?? 'N/A'}',
+                      ),
                     ),
                   )
                   .toList(),
@@ -2015,13 +2363,13 @@ class _TeachersTab extends StatelessWidget {
               columns: const [
                 DataColumn(label: Text('Name')),
                 DataColumn(label: Text('Email')),
-                DataColumn(label: Text('Assigned Class')),
+                DataColumn(label: Text('Assigned Classes')),
                 DataColumn(label: Text('Actions')),
               ],
               rows: docs.map((doc) {
                 final d = doc.data() as Map<String, dynamic>;
                 final name = d['name']?.toString() ?? '—';
-                final cls = d['class']?.toString() ?? '—';
+                final teacherClass = d['class']?.toString().trim() ?? '';
                 return DataRow(
                   cells: [
                     DataCell(
@@ -2044,7 +2392,7 @@ class _TeachersTab extends StatelessWidget {
                       ),
                     ),
                     DataCell(
-                      cls == '—'
+                      teacherClass.isEmpty
                           ? const Text(
                               'Not Assigned',
                               style: TextStyle(
@@ -2062,7 +2410,7 @@ class _TeachersTab extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                'Class $cls',
+                                teacherClass,
                                 style: const TextStyle(
                                   fontSize: 11,
                                   color: _navy,
@@ -2109,7 +2457,7 @@ class _TeachersTab extends StatelessWidget {
         final doc = docs[i];
         final d = doc.data() as Map<String, dynamic>;
         final name = d['name']?.toString() ?? '?';
-        final cls = d['class']?.toString() ?? '';
+        final teacherClass = d['class']?.toString().trim() ?? '';
         return Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -2168,7 +2516,7 @@ class _TeachersTab extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 5),
-                      cls.isNotEmpty
+                      teacherClass.isNotEmpty
                           ? Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -2179,7 +2527,7 @@ class _TeachersTab extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                'Class $cls',
+                                teacherClass,
                                 style: const TextStyle(
                                   fontSize: 10,
                                   color: _navy,
@@ -2194,6 +2542,13 @@ class _TeachersTab extends StatelessWidget {
                                 color: Color(0xFF9CA3AF),
                               ),
                             ),
+                      const Text(
+                        'No class assigned',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -2246,6 +2601,274 @@ class _TeachersTab extends StatelessWidget {
             border: Border.all(color: c.withOpacity(0.2)),
           ),
           child: Icon(icon, color: c, size: 16),
+        ),
+      ),
+    );
+  }
+}
+
+class _EditStudentDialog extends StatefulWidget {
+  final DocumentSnapshot doc;
+  final Future<bool> Function(Map<String, dynamic> values) onSave;
+  final Future<bool> Function()? onDelete;
+
+  const _EditStudentDialog({
+    required this.doc,
+    required this.onSave,
+    this.onDelete,
+  });
+
+  @override
+  State<_EditStudentDialog> createState() => _EditStudentDialogState();
+}
+
+class _EditStudentDialogState extends State<_EditStudentDialog> {
+  late final TextEditingController nameCtrl;
+  late final TextEditingController emailCtrl;
+  late final TextEditingController rollCtrl;
+  late final TextEditingController classCtrl;
+
+  bool saving = false;
+  String? errorText;
+
+  // App colors (yahan direct define kar diye hain taake scope ka masla na ho)
+  static const Color primaryColor = Color(0xFF1E293B); // Navy/Dark
+  static const Color accentColor = Color(0xFF3B82F6); // Blue accent
+  static const Color errorColor = Color(0xFFEF4444); // Red
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.doc.data() as Map<String, dynamic>;
+
+    nameCtrl = TextEditingController(text: d['name']?.toString() ?? '');
+    emailCtrl = TextEditingController(text: d['email']?.toString() ?? '');
+    rollCtrl = TextEditingController(text: d['rollNo']?.toString() ?? '');
+    classCtrl = TextEditingController(text: d['class']?.toString() ?? '');
+  }
+
+  @override
+  void dispose() {
+    nameCtrl.dispose();
+    emailCtrl.dispose();
+    rollCtrl.dispose();
+    classCtrl.dispose();
+    super.dispose();
+  }
+
+  Widget fieldLabel(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Color(0xFF374151),
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration fieldDeco(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(
+          color: accentColor,
+          width: 1.5,
+        ), // Yahan fix kar diya
+      ),
+      filled: true,
+      fillColor: const Color(0xFFF9FAFB),
+    );
+  }
+
+  Future<void> _handleSave() async {
+    final name = nameCtrl.text.trim();
+    final email = emailCtrl.text.trim();
+    final roll = rollCtrl.text.trim();
+    final cls = classCtrl.text.trim();
+
+    if (name.isEmpty || email.isEmpty || roll.isEmpty || cls.isEmpty) {
+      setState(() => errorText = 'All fields are required.');
+      return;
+    }
+
+    // Simple email regex check agar aapka _emailRx define nahi hai
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      setState(() => errorText = 'Enter a valid email.');
+      return;
+    }
+
+    setState(() {
+      errorText = null;
+      saving = true;
+    });
+
+    final success = await widget.onSave({
+      'name': name,
+      'email': email,
+      'rollNo': roll,
+      'class': cls,
+    });
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.of(context).pop('updated');
+    } else {
+      setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      titlePadding: EdgeInsets.zero,
+      title: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: const BoxDecoration(
+          color: primaryColor,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+          ),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.edit_outlined, color: Colors.white70, size: 18),
+            SizedBox(width: 8),
+            Text(
+              'Edit Student',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      content: SizedBox(
+        width: 320,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              fieldLabel('Full Name'),
+              TextField(
+                controller: nameCtrl,
+                enabled: !saving,
+                decoration: fieldDeco('Enter full name'),
+              ),
+              const SizedBox(height: 14),
+
+              fieldLabel('Email'),
+              TextField(
+                controller: emailCtrl,
+                enabled: !saving,
+                keyboardType: TextInputType.emailAddress,
+                decoration: fieldDeco('Enter email address'),
+              ),
+              const SizedBox(height: 14),
+
+              fieldLabel('Roll Number'),
+              TextField(
+                controller: rollCtrl,
+                enabled: !saving,
+                decoration: fieldDeco('Enter roll number'),
+              ),
+              const SizedBox(height: 14),
+
+              fieldLabel('Class / Section'),
+              TextField(
+                controller: classCtrl,
+                enabled: !saving,
+                decoration: fieldDeco('e.g. 7-A'),
+              ),
+
+              if (errorText != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    errorText!,
+                    style: const TextStyle(color: errorColor, fontSize: 12),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: saving
+                          ? null
+                          : () {
+                              FocusScope.of(context).unfocus();
+                              Navigator.of(context).pop();
+                            },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: primaryColor,
+                        side: const BorderSide(color: primaryColor),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: saving ? null : _handleSave,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Update',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

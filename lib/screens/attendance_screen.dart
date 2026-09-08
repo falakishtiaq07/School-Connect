@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:school_connect/service/notification_service.dart';
 
 /// ============================================================
@@ -17,7 +18,7 @@ class AttendanceManagementScreen extends StatefulWidget {
 
 class _AttendanceManagementScreenState
     extends State<AttendanceManagementScreen> {
-  int _selectedTab = 0; // 0 = Mark Attendance, 1 = Attendance History
+  int _selectedTab = 0;
   final GlobalKey<_AttendanceHistoryBodyState> _historyKey =
       GlobalKey<_AttendanceHistoryBodyState>();
   // ---- Dashboard theme ----
@@ -216,64 +217,153 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
   List<Map<String, dynamic>> students = [];
   bool isEditing = false;
   bool isLoading = true;
-  String todayDate = "";
-
+  DateTime selectedDate = DateTime.now();
+  bool isSaving = false;
   static const Color navy = Color(0xFF1E3A5F);
   static const Color borderColor = Color(0xFFE5E7EB);
+  String formatDate(DateTime date) {
+    return "${date.year.toString().padLeft(4, '0')}-"
+        "${date.month.toString().padLeft(2, '0')}-"
+        "${date.day.toString().padLeft(2, '0')}";
+  }
 
   @override
   void initState() {
     super.initState();
-    todayDate = DateTime.now().toString().split(' ')[0];
-    fetchStudents();
+
+    selectedDate = DateTime.now();
+    fetchStudentsForDate();
   }
 
-  Future<void> fetchStudents() async {
-    var snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'Student')
-        .where('class', isEqualTo: widget.teacherClass)
-        .get();
+  Future<void> fetchStudentsForDate() async {
+    try {
+      final date = formatDate(selectedDate);
 
-    setState(() {
-      students = snapshot.docs
-          .map(
-            (doc) => {
-              'id': doc.id,
-              'name': doc['name'],
-              'rollNo': doc['rollNo'],
-              'status': 'Not Marked',
-            },
-          )
-          .toList();
-      isLoading = false;
-    });
+      final studentSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'Student')
+          .where('class', isEqualTo: widget.teacherClass)
+          .get();
+
+      final attendanceSnapshot = await FirebaseFirestore.instance
+          .collection('attendance_records')
+          .where('class', isEqualTo: widget.teacherClass)
+          .where('date', isEqualTo: date)
+          .get();
+
+      final Map<String, String> existingAttendance = {};
+
+      for (final doc in attendanceSnapshot.docs) {
+        final data = doc.data();
+
+        existingAttendance[data['studentId'].toString()] = data['status']
+            .toString();
+      }
+
+      final loadedStudents = studentSnapshot.docs.map((doc) {
+        final data = doc.data();
+
+        return {
+          'id': doc.id,
+          'name': data['name'],
+          'rollNo': data['rollNo'],
+          'status': existingAttendance[doc.id] ?? 'Not Marked',
+        };
+      }).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        students = loadedStudents;
+        isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to load attendance: $e")));
+    }
   }
 
   Future<void> saveAttendance() async {
-    String date = DateTime.now().toIso8601String().split('T')[0];
-    WriteBatch batch = FirebaseFirestore.instance.batch();
+    final date = formatDate(selectedDate);
 
-    final firestore = FirebaseFirestore.instance;
-    for (var student in students) {
-      // Nayi flat collection 'attendance_records'
-      DocumentReference ref = FirebaseFirestore.instance
-          .collection('attendance_records')
-          .doc();
-
-      batch.set(ref, {
-        "studentId": student['id'],
-        "studentName": student['name'],
-        "rollNo": student['rollNo'],
-        "class": widget.teacherClass,
-        "status": student['status'],
-        "date": date,
-        "createdAt": FieldValue.serverTimestamp(),
+    try {
+      setState(() {
+        isSaving = true;
       });
-    }
-    await batch.commit();
 
-    sendAbsentNotifications(date);
+      final firestore = FirebaseFirestore.instance;
+
+      final existingSnapshot = await firestore
+          .collection('attendance_records')
+          .where('class', isEqualTo: widget.teacherClass)
+          .where('date', isEqualTo: date)
+          .get();
+
+      final Map<String, String> existingRecordIds = {};
+
+      for (final doc in existingSnapshot.docs) {
+        final data = doc.data();
+
+        existingRecordIds[data['studentId'].toString()] = doc.id;
+      }
+
+      final batch = firestore.batch();
+
+      for (final student in students) {
+        if (student['status'] == 'Not Marked') {
+          continue;
+        }
+
+        final studentId = student['id'].toString();
+
+        final existingId = existingRecordIds[studentId];
+
+        final DocumentReference ref = existingId != null
+            ? firestore.collection('attendance_records').doc(existingId)
+            : firestore.collection('attendance_records').doc();
+
+        batch.set(ref, {
+          "studentId": studentId,
+          "studentName": student['name'],
+          "rollNo": student['rollNo'],
+          "class": widget.teacherClass,
+          "status": student['status'],
+          "date": date,
+          "createdAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      await batch.commit();
+
+      sendAbsentNotifications(date);
+      if (!mounted) return;
+
+      setState(() {
+        isEditing = false;
+        isSaving = false;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Attendance saved for $date")));
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isSaving = false;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to save attendance: $e")));
+    }
   }
 
   void sendAbsentNotifications(String date) async {
@@ -291,14 +381,18 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
               "isRead": false,
             });
 
-        await NotificationService.sendPushToUser(
-          userId: student['id'], // student ka Firebase UID
-          title: 'Attendance Marked',
-          body:
-              "You have been marked ABSENT in ${widget.teacherClass} on $date",
-          notificationType: 'attendance',
-          relatedId: notifRef.id,
-        );
+        try {
+          await NotificationService.sendPushToUser(
+            targetUserId: student['id'],
+            title: 'Attendance Marked',
+            body:
+                "You have been marked ABSENT in ${widget.teacherClass} on $date",
+            notificationType: 'attendance',
+            relatedId: notifRef.id,
+          );
+        } catch (notificationError) {
+          debugPrint('NOTIFICATION ERROR: $notificationError');
+        }
       }
     }
   }
@@ -411,14 +505,50 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
           // 1. Date Section
           Column(
             children: [
-              const Icon(Icons.calendar_today_rounded, color: navy, size: 22),
-              const SizedBox(height: 4),
-              Text(
-                todayDate, // Yahan aapka date variable aa gaya
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: navy,
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate.isAfter(DateTime.now())
+                        ? DateTime.now()
+                        : selectedDate,
+                    firstDate: DateTime(2025),
+                    lastDate: DateTime.now(),
+                  );
+
+                  if (picked != null) {
+                    setState(() {
+                      selectedDate = picked;
+                      isEditing = false;
+                      isLoading = true;
+                    });
+
+                    // IMPORTANT:
+                    // Selected date ke students + existing attendance load karega
+                    await fetchStudentsForDate();
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        color: navy,
+                        size: 22,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        formatDate(selectedDate),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: navy,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -646,8 +776,8 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
                 "Confirm Attendance",
                 style: TextStyle(fontWeight: FontWeight.bold, color: navy),
               ),
-              content: const Text(
-                "Are you sure you want to save today's attendance?",
+              content: Text(
+                "Are you sure you want to save attendance for ${formatDate(selectedDate)}?",
               ),
               actions: [
                 TextButton(
@@ -711,7 +841,7 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
   bool showAttendanceCount = false;
   static const Color navy = Color(0xFF1E3A5F);
   static const Color borderColor = Color(0xFFE5E7EB);
-
+  DateTime? selectedCountMonth;
   void _deleteSelected() async {
     final toDelete = selectedItems.entries
         .where((e) => e.value)
@@ -767,8 +897,109 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
   void resetToHistory() {
     setState(() {
       showAttendanceCount = false;
+      selectedCountMonth = null;
       isSelectionMode = false;
       selectedItems.clear();
+    });
+  }
+
+  Future<void> selectAttendanceMonth() async {
+    final now = DateTime.now();
+
+    int selectedYear = selectedCountMonth?.year ?? now.year;
+    int selectedMonth = selectedCountMonth?.month ?? now.month;
+
+    final picked = await showDialog<DateTime>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text(
+            "Select Attendance Month",
+            style: TextStyle(fontWeight: FontWeight.bold, color: navy),
+          ),
+          content: StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<int>(
+                    value: selectedMonth,
+                    decoration: const InputDecoration(labelText: "Month"),
+                    items: List.generate(12, (index) {
+                      final month = index + 1;
+
+                      return DropdownMenuItem(
+                        value: month,
+                        child: Text(
+                          DateFormat(
+                            'MMMM',
+                          ).format(DateTime(selectedYear, month)),
+                        ),
+                      );
+                    }),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          selectedMonth = value;
+                        });
+                      }
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  DropdownButtonFormField<int>(
+                    value: selectedYear,
+                    decoration: const InputDecoration(labelText: "Year"),
+                    items: List.generate(now.year - 2025 + 1, (index) {
+                      final year = 2025 + index;
+
+                      return DropdownMenuItem(
+                        value: year,
+                        child: Text(year.toString()),
+                      );
+                    }),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          selectedYear = value;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, DateTime(selectedYear, selectedMonth));
+              },
+              child: const Text("View"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (picked == null) {
+      // User ne Cancel kiya
+      setState(() {
+        selectedCountMonth = null;
+        showAttendanceCount = false;
+      });
+      return;
+    }
+
+    setState(() {
+      selectedCountMonth = picked;
+      showAttendanceCount = true;
     });
   }
 
@@ -892,39 +1123,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
 
                               const SizedBox(width: 10),
 
-                              if (!isSelectionMode)
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      showAttendanceCount =
-                                          !showAttendanceCount;
-                                    });
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: navy,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 10,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  icon: Icon(
-                                    showAttendanceCount
-                                        ? Icons.history
-                                        : Icons.analytics_outlined,
-                                    size: 18,
-                                  ),
-                                  label: Text(
-                                    showAttendanceCount
-                                        ? "History"
-                                        : "Attendance Count",
-                                  ),
-                                ),
-
                               if (isSelectionMode)
                                 ElevatedButton.icon(
                                   onPressed: _deleteSelected,
@@ -984,6 +1182,9 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
       padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
       child: Row(
         children: [
+          // ============================================
+          // DATE FILTER
+          // ============================================
           Expanded(
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
@@ -1000,25 +1201,65 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                 overflow: TextOverflow.ellipsis,
               ),
               onPressed: () async {
-                DateTime? picked = await showDatePicker(
+                final DateTime now = DateTime.now();
+
+                final DateTime? picked = await showDatePicker(
                   context: context,
-                  initialDate: DateTime.now(),
+                  initialDate: selectedDate != null
+                      ? DateTime.parse(selectedDate!)
+                      : now,
                   firstDate: DateTime(2025),
-                  lastDate: DateTime(2030),
+                  // Future dates block
+                  lastDate: now,
                 );
+
                 if (picked != null) {
-                  setState(
-                    () => selectedDate = picked.toString().split(' ')[0],
-                  );
+                  setState(() {
+                    selectedDate =
+                        "${picked.year.toString().padLeft(4, '0')}-"
+                        "${picked.month.toString().padLeft(2, '0')}-"
+                        "${picked.day.toString().padLeft(2, '0')}";
+                  });
                 }
               },
             ),
           ),
+
+          const SizedBox(width: 8),
+
+          // ============================================
+          // ATTENDANCE COUNT
+          // ============================================
+          ElevatedButton.icon(
+            onPressed: () async {
+              await selectAttendanceMonth();
+            },
+
+            style: ElevatedButton.styleFrom(
+              backgroundColor: navy,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(Icons.analytics_outlined, size: 18),
+            label: const Text("Attendance Count"),
+          ),
+
+          // ============================================
+          // CLEAR DATE
+          // ============================================
           if (selectedDate != null) ...[
             const SizedBox(width: 8),
             IconButton(
               tooltip: "Clear filter",
-              onPressed: () => setState(() => selectedDate = null),
+              onPressed: () {
+                setState(() {
+                  selectedDate = null;
+                });
+              },
               icon: const Icon(Icons.clear_rounded, color: Colors.red),
               style: IconButton.styleFrom(
                 backgroundColor: Colors.red.withOpacity(0.08),
@@ -1099,117 +1340,355 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
   }
 
   Widget _buildAttendanceCount() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('attendance_records')
-          .where('class', isEqualTo: widget.teacherClass)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    // Agar month select nahi hua to month selection dialog show karo
+    if (selectedCountMonth == null) {
+      return const SizedBox.shrink();
+    }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text("No attendance records found"));
-        }
+    final DateTime month = selectedCountMonth!;
 
-        Map<String, Map<String, dynamic>> students = {};
+    final String monthStart =
+        "${month.year.toString().padLeft(4, '0')}-"
+        "${month.month.toString().padLeft(2, '0')}-01";
 
-        for (var doc in snapshot.data!.docs) {
-          final data = doc.data() as Map<String, dynamic>;
+    final DateTime nextMonth = DateTime(month.year, month.month + 1, 1);
 
-          String id = data['studentId'];
-          String name = data['studentName'];
-          String roll = data['rollNo'].toString();
-          String status = data['status'];
+    final String nextMonthStart =
+        "${nextMonth.year.toString().padLeft(4, '0')}-"
+        "${nextMonth.month.toString().padLeft(2, '0')}-01";
 
-          students.putIfAbsent(id, () {
-            return {'name': name, 'roll': roll, 'present': 0, 'absent': 0};
-          });
+    const List<String> monthNames = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
 
-          if (status == "Present") {
-            students[id]!['present']++;
-          } else {
-            students[id]!['absent']++;
-          }
-        }
+    final String monthTitle = "${monthNames[month.month - 1]} ${month.year}";
 
-        final studentList = students.values.toList();
-
-        return ListView.builder(
+    return Column(
+      children: [
+        // =====================================================
+        // MONTH HEADER
+        // =====================================================
+        Padding(
           padding: EdgeInsets.fromLTRB(
             widget.horizontalPadding,
-            8,
+            10,
             widget.horizontalPadding,
-            16,
+            8,
           ),
-          itemCount: studentList.length,
-          itemBuilder: (context, index) {
-            final student = studentList[index];
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: borderColor),
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: navy.withOpacity(.1),
-                    child: Text(
-                      student['roll'],
-                      style: const TextStyle(
-                        color: navy,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Attendance Count",
+                      style: TextStyle(
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
+                        color: navy,
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      monthTitle,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: selectAttendanceMonth,
+                icon: const Icon(Icons.calendar_month, size: 18),
+                label: const Text("Change Month"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: navy,
+                  side: const BorderSide(color: navy),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // =====================================================
+        // ATTENDANCE DATA
+        // =====================================================
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('attendance_records')
+                .where('class', isEqualTo: widget.teacherClass)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: navy),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    "Error: ${snapshot.error}",
+                    textAlign: TextAlign.center,
                   ),
+                );
+              }
 
-                  const SizedBox(width: 12),
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Center(
+                  child: Text(
+                    "No attendance records found for $monthTitle",
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
 
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          student['name'],
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
+              // =================================================
+              // STUDENT DATA
+              // =================================================
+
+              final Map<String, Map<String, dynamic>> students = {};
+
+              // Same student + same date ko duplicate count nahi karna
+              final Set<String> countedRecords = {};
+
+              for (final doc in snapshot.data!.docs) {
+                final data = doc.data() as Map<String, dynamic>;
+
+                final String studentId = data['studentId']?.toString() ?? '';
+
+                final String studentName =
+                    data['studentName']?.toString() ?? 'Unknown';
+
+                final String rollNo = data['rollNo']?.toString() ?? '-';
+
+                final String status = data['status']?.toString() ?? '';
+
+                final String date = data['date']?.toString() ?? '';
+
+                if (studentId.isEmpty || date.isEmpty) {
+                  continue;
+                }
+
+                // =================================================
+                // ONLY SELECTED MONTH
+                // =================================================
+
+                if (date.compareTo(monthStart) < 0 ||
+                    date.compareTo(nextMonthStart) >= 0) {
+                  continue;
+                }
+
+                // =================================================
+                // DUPLICATE PROTECTION
+                // =================================================
+
+                final String recordKey = "${studentId}_$date";
+
+                if (countedRecords.contains(recordKey)) {
+                  continue;
+                }
+
+                countedRecords.add(recordKey);
+
+                // =================================================
+                // CREATE STUDENT
+                // =================================================
+
+                students.putIfAbsent(studentId, () {
+                  return {
+                    'name': studentName,
+                    'roll': rollNo,
+                    'present': 0,
+                    'absent': 0,
+                  };
+                });
+
+                // =================================================
+                // COUNT
+                // =================================================
+
+                if (status == "Present") {
+                  students[studentId]!['present'] =
+                      (students[studentId]!['present'] as int) + 1;
+                }
+
+                if (status == "Absent") {
+                  students[studentId]!['absent'] =
+                      (students[studentId]!['absent'] as int) + 1;
+                }
+              }
+
+              // =================================================
+              // NO DATA FOR SELECTED MONTH
+              // =================================================
+
+              if (students.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.event_busy,
+                        size: 55,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        "No attendance found for $monthTitle",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Text(
-                              "Present: ${student['present']}",
-                              style: const TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 20),
-                            Text(
-                              "Absent: ${student['absent']}",
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        "Try another month",
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              // =================================================
+              // SORT STUDENTS
+              // =================================================
+
+              final List<Map<String, dynamic>> studentList = students.values
+                  .toList();
+
+              studentList.sort(
+                (a, b) => a['roll'].toString().compareTo(b['roll'].toString()),
+              );
+
+              // =================================================
+              // STUDENT LIST
+              // =================================================
+
+              return ListView.builder(
+                padding: EdgeInsets.fromLTRB(
+                  widget.horizontalPadding,
+                  8,
+                  widget.horizontalPadding,
+                  16,
+                ),
+                itemCount: studentList.length,
+                itemBuilder: (context, index) {
+                  final student = studentList[index];
+
+                  final int present = student['present'] as int;
+
+                  final int absent = student['absent'] as int;
+
+                  final int total = present + absent;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: borderColor),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                    child: Row(
+                      children: [
+                        // =======================================
+                        // ROLL NUMBER
+                        // =======================================
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundColor: navy.withOpacity(.1),
+                          child: Text(
+                            student['roll'].toString(),
+                            style: const TextStyle(
+                              color: navy,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+
+                        // =======================================
+                        // STUDENT INFO
+                        // =======================================
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                student['name'].toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: navy,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 16,
+                                runSpacing: 5,
+                                children: [
+                                  Text(
+                                    "Present: $present",
+                                    style: const TextStyle(
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    "Absent: $absent",
+                                    style: const TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    "Total: $total",
+                                    style: TextStyle(
+                                      color: Colors.grey.shade700,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:school_connect/screens/attendance_screen.dart';
 import 'package:school_connect/screens/monthly_reports_screen.dart';
@@ -9,7 +10,8 @@ import 'package:school_connect/screens/teacher_profile_screen.dart';
 import 'package:school_connect/screens/list_of_students_screen.dart';
 import 'package:school_connect/screens/manage_leave_screen.dart';
 import 'package:school_connect/screens/post_homework_screen.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:school_connect/service/one_signal_service.dart';
+import 'package:school_connect/service/unread_status_service.dart';
 
 class TeacherDashboardScreen extends StatefulWidget {
   const TeacherDashboardScreen({super.key});
@@ -25,26 +27,34 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   static const _bg = Color(0xFFF0F4F8);
   static const _white = Colors.white;
 
-  // ── Dynamic data — fetched from Firestore (logic unchanged) ───────────────
+  // ── Dynamic data — fetched from Firestore ───────────────────────────────
   String _userName = 'Loading...';
   String _userClass = 'Loading...';
+
+  // ── Unread Status ───────────────────────────────────────────────────────
+  Map<String, bool> _unreadStatus = {'announcements': false, 'leaves': false};
 
   @override
   void initState() {
     super.initState();
     fetchTeacherData();
+    _loadUnreadStatus();
   }
 
+  // ── Fetch Teacher Data ───────────────────────────────────────────────────
   Future<void> fetchTeacherData() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
+
       if (user != null) {
         final doc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .get();
+
         if (doc.exists) {
           final data = doc.data() as Map<String, dynamic>;
+
           if (mounted) {
             setState(() {
               _userName = data['name'] ?? 'Teacher';
@@ -60,6 +70,22 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
   }
 
+  // ── Load Unread Status ──────────────────────────────────────────────────
+  Future<void> _loadUnreadStatus() async {
+    try {
+      final status = await UnreadService.getUnreadStatus();
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadStatus = status;
+      });
+    } catch (e) {
+      debugPrint('Error loading teacher unread status: $e');
+    }
+  }
+
+  // ── Logout ───────────────────────────────────────────────────────────────
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -77,18 +103,33 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await OneSignal.logout();
-              await FirebaseAuth.instance.signOut();
-              if (ctx.mounted) {
+              try {
+                await OneSignalService.logout();
+                await FirebaseAuth.instance.signOut();
+
+                if (!ctx.mounted) return;
+
                 Navigator.pushAndRemoveUntil(
                   ctx,
                   MaterialPageRoute(builder: (_) => const WelcomeScreen()),
                   (route) => false,
                 );
+              } catch (e) {
+                debugPrint('Logout Error: $e');
+
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Logout failed. Please try again.'),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
+              backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -101,7 +142,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Cards list (logic unchanged) ──────────────────────────────────────────
+  // ── Cards list ──────────────────────────────────────────────────────────
   List<_CardData> _cards(BuildContext context) => [
     _CardData(
       icon: Icons.check_circle_outline,
@@ -124,57 +165,83 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         }
       },
     ),
+
+    // ── Manage Leaves ───────────────────────────────────────────────
     _CardData(
       icon: Icons.calendar_month_outlined,
       title: 'Manage Leaves',
       description: 'View, accept or reject student leave requests.',
       buttonText: 'View Requests',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ManageLeavePage()),
-      ),
+      hasUnread: _unreadStatus['leaves'] ?? false,
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ManageLeavePage()),
+        );
+
+        // Refresh after returning
+        await _loadUnreadStatus();
+      },
     ),
+
+    // ── Announcements ───────────────────────────────────────────────
     _CardData(
       icon: Icons.campaign_outlined,
-      title: 'Announcements',
-      description: 'Create and view class or school notices.',
-      buttonText: 'View Notices',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen()),
-      ),
+      title: 'School Announcements',
+      description:
+          'View notices, meetings, and updates from the administration.',
+      buttonText: 'View Announcements',
+      hasUnread: _unreadStatus['announcements'] ?? false,
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen()),
+        );
+
+        // Refresh after returning
+        await _loadUnreadStatus();
+      },
     ),
+
     _CardData(
       icon: Icons.assignment_outlined,
       title: 'Post Homework',
-      description: 'Post new daily assignments for students.',
+      description: 'Post daily class diary or homework for students.',
       buttonText: 'Post Homework',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeworkManagementScreen()),
-      ),
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeworkManagementScreen()),
+        );
+      },
     ),
+
     _CardData(
       icon: Icons.assessment_outlined,
       title: 'Monthly Reports',
-      description: 'View and update individual student progress.',
+      description: 'Create and send student progress reports.',
       buttonText: 'Upload Reports',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const MonthlyReportsScreen()),
-      ),
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MonthlyReportsScreen()),
+        );
+      },
     ),
+
     _CardData(
       icon: Icons.group_outlined,
       title: 'My Students',
       description: 'View all students enrolled in your class.',
       buttonText: 'View Class',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ListOfStudentsScreen(teacherClass: _userClass),
-        ),
-      ),
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ListOfStudentsScreen(teacherClass: _userClass),
+          ),
+        );
+      },
     ),
   ];
 
@@ -186,7 +253,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 900;
-    final isTablet = screenWidth > 600;
     final isMobile = screenWidth <= 600;
 
     return Scaffold(
@@ -206,15 +272,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   children: [
                     const SizedBox(height: 4),
 
-                    // ── Title + class badge ─────────────────────────────────
+                    // ── Title + class badge ─────────────────────────────
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
+                            children: const [
+                              Text(
                                 'Overview',
                                 style: TextStyle(
                                   fontSize: 13,
@@ -223,8 +289,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                   letterSpacing: 0.8,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              const Text(
+                              SizedBox(height: 4),
+                              Text(
                                 'Teacher Dashboard',
                                 style: TextStyle(
                                   fontSize: 22,
@@ -235,7 +301,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                             ],
                           ),
                         ),
-                        // Class badge — from Firestore
+
+                        // Class badge
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -268,9 +335,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 24),
 
-                    // ── Responsive cards ────────────────────────────────────
+                    // ── Responsive cards ─────────────────────────────────
                     if (isMobile)
                       ListView.builder(
                         shrinkWrap: true,
@@ -307,9 +375,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Header — responsive ────────────────────────────────────────────────────
+  // ── Header ──────────────────────────────────────────────────────────────
   Widget _buildHeader(bool isMobile) {
     final statusBarHeight = MediaQuery.of(context).padding.top;
+
     final initial = _userName.isNotEmpty && _userName != 'Loading...'
         ? _userName[0].toUpperCase()
         : 'T';
@@ -333,7 +402,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         ],
       ),
       child: isMobile
-          // ── Mobile: 2 rows ──────────────────────────────────────────────
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -432,7 +500,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 ),
               ],
             )
-          // ── Desktop/Tablet: single row ──────────────────────────────────
           : Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -519,7 +586,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Drawer ────────────────────────────────────────────────────────────────
+  // ── Drawer ──────────────────────────────────────────────────────────────
   Widget _buildDrawer() {
     final initial = _userName.isNotEmpty && _userName != 'Loading...'
         ? _userName[0].toUpperCase()
@@ -620,6 +687,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final color = isLogout
         ? Colors.red.shade600
         : (isSelected ? _navy : const Color(0xFF374151));
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
@@ -642,7 +710,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Grid card (tablet / desktop) ──────────────────────────────────────────
+  // ── Grid card ───────────────────────────────────────────────────────────
   Widget _buildGridCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -676,14 +744,31 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2F7),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(card.icon, color: _navy, size: 22),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        // existing icon container
+                        child: Icon(
+                          card.icon,
+                          // existing styling
+                        ),
+                      ),
+
+                      if (card.hasUnread)
+                        Positioned(
+                          right: -3,
+                          top: -3,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -738,7 +823,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Mobile card — horizontal, no overflow ─────────────────────────────────
+  // ── Mobile card ─────────────────────────────────────────────────────────
   Widget _buildMobileCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -757,7 +842,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Navy top strip
           Container(
             height: 4,
             decoration: const BoxDecoration(
@@ -773,46 +857,59 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Icon box
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2F7),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Icon(card.icon, color: _navy, size: 24),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      // existing icon container
+                      child: Icon(
+                        card.icon,
+                        // existing styling
+                      ),
+                    ),
+
+                    if (card.hasUnread)
+                      Positioned(
+                        right: -3,
+                        top: -3,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 14),
-                // Text + button
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         card.title,
                         style: const TextStyle(
-                          fontSize: 15,
+                          fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF1A2A3A),
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         card.description,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: Color(0xFF6B7280),
-                          height: 1.5,
+                          height: 1.4,
                         ),
                       ),
                       const SizedBox(height: 10),
                       SizedBox(
-                        width: double.infinity,
-                        height: 36,
+                        height: 32,
                         child: ElevatedButton(
                           onPressed: card.onPressed,
                           style: ElevatedButton.styleFrom(
@@ -822,8 +919,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
                             textStyle: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -842,19 +940,24 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 }
 
-// ── Data model ────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// CARD DATA
+// ═════════════════════════════════════════════════════════════════════════════
+
 class _CardData {
   final IconData icon;
   final String title;
   final String description;
   final String buttonText;
   final VoidCallback onPressed;
+  final bool hasUnread;
 
-  const _CardData({
+  _CardData({
     required this.icon,
     required this.title,
     required this.description,
     required this.buttonText,
     required this.onPressed,
+    this.hasUnread = false,
   });
 }

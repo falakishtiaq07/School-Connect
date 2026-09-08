@@ -12,14 +12,17 @@ class ChallanPreviewScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Challan Preview'),
-        backgroundColor: const Color(0xFF1746A2),
+        backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
       ),
       body: PdfPreview(
         build: (format) async => pdfBytes,
-        allowPrinting: true,
-        allowSharing: true,
+        // Baqi tamam default buttons ko disable kar diya gaya hai
+        allowPrinting: false,
+        allowSharing: false,
         canChangeOrientation: false,
+        canChangePageFormat: false,
+        canDebug: false,
       ),
     );
   }

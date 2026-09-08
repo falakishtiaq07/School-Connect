@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 class ComplaintDetailsPage extends StatefulWidget {
   final String docId;
@@ -12,12 +13,54 @@ class ComplaintDetailsPage extends StatefulWidget {
 
 class _ComplaintDetailsPageState extends State<ComplaintDetailsPage> {
   // Status update function - Firestore mein update karega
+  // Status update function - Firestore mein update karega
   Future<void> _updateStatus(String newStatus) async {
     try {
+      // 1. Pehle Firestore se document ka data fetch karein taake student ki ID mil sakay
+      DocumentSnapshot docSnapshot = await FirebaseFirestore.instance
+          .collection("complaints")
+          .doc(widget.docId)
+          .get();
+
+      if (!docSnapshot.exists) return;
+      final data = docSnapshot.data() as Map<String, dynamic>;
+
+      // Aam tor par complaints mein student ki ID 'studentUid' ya 'userId' ke naam se hoti hai
+      // Aapke Firestore document ke field name ke mutabiq yehin par change kar lein (e.g., data['studentUid'] ya data['userId'])
+      String targetUserId = data['studentUid'] ?? data['userId'] ?? '';
+
+      // 2. Firestore mein status update karein
       await FirebaseFirestore.instance
           .collection("complaints")
           .doc(widget.docId)
           .update({"status": newStatus});
+
+      // 3. Student ko Push Notification bhejein
+      try {
+        String title = 'Complaint Status Update';
+        String body = 'Your complaint status has been updated to $newStatus.';
+
+        if (newStatus.toLowerCase() == 'resolved') {
+          title = 'Complaint Resolved ✅';
+          body = 'Good news! Your complaint has been marked as resolved.';
+        } else if (newStatus.toLowerCase() == 'in progress') {
+          title = 'Complaint In Progress 🔄';
+          body = 'Your complaint is now being reviewed.';
+        }
+
+        if (targetUserId.isNotEmpty) {
+          await NotificationService.sendPushToUser(
+            targetUserId: targetUserId,
+            title: title,
+            body: body,
+            notificationType: 'complaint_update',
+            relatedId: widget.docId,
+          );
+        }
+      } catch (notificationError) {
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+        // Notification fail hone par bhi status update nahi rukega
+      }
 
       // Success SnackBar (Green)
       if (!mounted) return;
@@ -33,8 +76,8 @@ class _ComplaintDetailsPageState extends State<ComplaintDetailsPage> {
       // Error SnackBar (Red)
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Error updating status"),
+        SnackBar(
+          content: Text("Error updating status: $e"),
           backgroundColor: Colors.red, // Yahan red color diya
           behavior: SnackBarBehavior.floating,
         ),

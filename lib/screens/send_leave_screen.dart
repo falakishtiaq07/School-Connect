@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:school_connect/service/notification_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 class SendLeaveRequestPage extends StatefulWidget {
   const SendLeaveRequestPage({super.key});
@@ -132,7 +133,7 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
     }
     setState(() => _isLoading = true);
 
-    // ---- New: upload attachment first (if any) before touching Firestore ----
+    // ---- Upload attachment first (if any) ----
     String? attachmentUrl;
     String? attachmentType;
 
@@ -158,11 +159,13 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
             ),
           );
         }
-        return; // Do not create the Firestore document if upload failed.
+        return;
       }
       if (mounted) setState(() => _isUploadingAttachment = false);
     }
+
     try {
+      // 1. Firestore mein leave request save karein
       DocumentReference leaveRef = await FirebaseFirestore.instance
           .collection('leave_requests')
           .add({
@@ -180,18 +183,38 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
             "attachmentType": attachmentType ?? "",
           });
 
-      await NotificationService.sendPushNotification(
-        targetRole: 'admin',
-        title: 'New Leave Request',
-        body: '$_studentName sent a leave request',
-        notificationType: 'leave_request',
-        relatedId: leaveRef.id,
-      );
+      // 2. Sirf is student ki class ke assigned teacher ko dhoondein
+      if (_studentClass != null && _studentClass!.isNotEmpty) {
+        final teacherQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('role', isEqualTo: 'teacher')
+            .where('class', isEqualTo: _studentClass)
+            .get();
+
+        if (teacherQuery.docs.isNotEmpty) {
+          // Teacher ki Firebase UID mil gayi!
+          String teacherUid = teacherQuery.docs.first.id;
+
+          // 3. 🌟 FIXED: All-in-one dynamic function ka istemal 🌟
+          try {
+            await NotificationService.sendPushToUser(
+              targetUserId: teacherUid, // Teacher ki exact User ID target hogi
+              title: "New Leave Request",
+              body:
+                  "${_studentName ?? "Student"} has applied for leave. Reason: ${_reasonController.text.trim()}",
+              notificationType: "leave_request",
+              relatedId: leaveRef.id,
+            );
+          } catch (notificationError) {
+            debugPrint('NOTIFICATION ERROR: $notificationError');
+          }
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Request Submitted!"),
+            content: Text("Request Submitted & Notification Sent to Teacher!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -217,136 +240,132 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
     final String attachmentUrl = (data['attachmentUrl'] ?? '').toString();
     final String attachmentType = (data['attachmentType'] ?? '').toString();
 
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          constraints: const BoxConstraints(maxWidth: 450),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Center(
-                  child: Text(
-                    "Leave Details",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E3A5F),
-                    ),
-                  ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.grey[100],
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1E3A5F),
+            foregroundColor: Colors.white,
+            title: const Text("Leave Details"),
+            centerTitle: true,
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 800),
+              child: Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-
-                const SizedBox(height: 20),
-
-                _detailRow("Student", data['studentName']),
-                _detailRow("Leave Type", data['leaveType']),
-                _detailRow(
-                  "From Date",
-                  DateFormat(
-                    'dd MMM yyyy',
-                  ).format((data['fromDate'] as Timestamp).toDate()),
-                ),
-                _detailRow(
-                  "To Date",
-                  DateFormat(
-                    'dd MMM yyyy',
-                  ).format((data['toDate'] as Timestamp).toDate()),
-                ),
-
-                const SizedBox(height: 18),
-
-                const Text(
-                  "Reason",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                ),
-
-                const SizedBox(height: 8),
-
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    data['reason'],
-                    style: const TextStyle(fontSize: 15),
-                  ),
-                ),
-
-                // ---------------- Attachment ----------------
-                if (attachmentUrl.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-
-                  const Text(
-                    "Attachment",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  if (attachmentType == "image")
-                    GestureDetector(
-                      onTap: () => _openFullScreenImage(attachmentUrl),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          attachmentUrl,
-                          height: 170,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            height: 150,
-                            color: Colors.grey.shade200,
-                            child: const Center(
-                              child: Icon(Icons.broken_image, size: 45),
-                            ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(
+                        child: Text(
+                          "Request Information",
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E3A5F),
                           ),
                         ),
                       ),
-                    )
-                  else
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _openAttachmentUrl(attachmentUrl),
-                        icon: const Icon(Icons.picture_as_pdf),
-                        label: const Text("Open PDF"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
+                      const SizedBox(height: 20),
+                      _detailRow("Student", data['studentName']),
+                      _detailRow("Leave Type", data['leaveType']),
+                      _detailRow(
+                        "From Date",
+                        DateFormat(
+                          'dd MMM yyyy',
+                        ).format((data['fromDate'] as Timestamp).toDate()),
+                      ),
+                      _detailRow(
+                        "To Date",
+                        DateFormat(
+                          'dd MMM yyyy',
+                        ).format((data['toDate'] as Timestamp).toDate()),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        "Reason",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
                         ),
                       ),
-                    ),
-                ],
-
-                const SizedBox(height: 25),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A5F),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text("Close"),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          data['reason'],
+                          style: const TextStyle(fontSize: 15),
+                        ),
+                      ),
+                      if (attachmentUrl.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        const Text(
+                          "Attachment",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (attachmentType == "image")
+                          GestureDetector(
+                            onTap: () => _openFullScreenImage(attachmentUrl),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                attachmentUrl,
+                                height: 200,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  height: 150,
+                                  color: Colors.grey.shade200,
+                                  child: const Center(
+                                    child: Icon(Icons.broken_image, size: 45),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () =>
+                                  _openAttachmentUrl(attachmentUrl),
+                              icon: const Icon(Icons.picture_as_pdf),
+                              label: const Text("Open PDF"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
-
   // ---------------- Attachment viewing (new) ----------------
 
   Widget _buildAttachmentDetail(String url, String type) {

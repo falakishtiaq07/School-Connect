@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -21,11 +22,13 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
   final presentController = TextEditingController();
   final absentController = TextEditingController();
   final remarksController = TextEditingController();
+
   final cloudinary = CloudinaryPublic(
     'dkjsza6pw',
     'monthly_reports',
     cache: false,
   );
+
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
 
@@ -37,6 +40,7 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
     "Class 4",
     "Class 5",
   ];
+
   String? selectedClass;
   String? selectedStudentId;
   String? selectedStudentName;
@@ -50,6 +54,7 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
   List<XFile> _selectedImages = [];
   bool isLoadingStudents = false;
   bool isSaving = false;
+
   // Design Constants
   final Color primaryBlue = const Color(0xFF1746A2);
   final Color successGreen = const Color(0xFF166534);
@@ -69,31 +74,53 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
       "November",
       "December",
     ];
+
     return months;
   }
 
   @override
   void initState() {
     super.initState();
-    loadClasses();
+    loadTeacherClass();
   }
 
-  Future<void> loadClasses() async {
-    QuerySnapshot snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'Student')
-        .get();
+  Future<void> loadTeacherClass() async {
+    try {
+      final User? user = FirebaseAuth.instance.currentUser;
 
-    Set<String> uniqueClasses = {};
-    for (var doc in snapshot.docs) {
-      if (doc.data() is Map && (doc.data() as Map).containsKey('class')) {
-        uniqueClasses.add(doc['class']);
-      }
+      if (user == null) return;
+
+      final DocumentSnapshot teacherDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!teacherDoc.exists) return;
+
+      final data = teacherDoc.data() as Map<String, dynamic>;
+
+      final String? teacherClass = data['class']?.toString();
+
+      if (teacherClass == null || teacherClass.isEmpty) return;
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedClass = teacherClass;
+        classes = [teacherClass];
+      });
+
+      await loadStudents(teacherClass);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to load teacher class: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-
-    setState(() {
-      classes = uniqueClasses.toList()..sort();
-    });
   }
 
   Future<void> loadStudents(String className) async {
@@ -101,6 +128,11 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
       isLoadingStudents = true;
       students = [];
       selectedStudentId = null;
+
+      // Class change par old attendance clear
+      totalDaysController.clear();
+      presentController.clear();
+      absentController.clear();
     });
 
     QuerySnapshot snapshot = await FirebaseFirestore.instance
@@ -109,10 +141,132 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
         .where('class', isEqualTo: className)
         .get();
 
+    if (!mounted) return;
+
     setState(() {
       students = snapshot.docs;
       isLoadingStudents = false;
     });
+  }
+
+  // ============================================================
+  // MONTHLY ATTENDANCE COUNT
+  // ============================================================
+  Future<void> fetchStudentMonthlyAttendance() async {
+    // Agar class, student ya month select nahi hua
+    // to attendance fields clear kar dein.
+    if (selectedClass == null ||
+        selectedStudentId == null ||
+        selectedMonth == null) {
+      if (!mounted) return;
+
+      setState(() {
+        totalDaysController.clear();
+        presentController.clear();
+        absentController.clear();
+      });
+
+      return;
+    }
+
+    try {
+      final List<String> months = getMonthsList();
+
+      final int monthNumber = months.indexOf(selectedMonth!) + 1;
+
+      // Current year use hoga kyun ke Monthly Reports mein
+      // abhi year dropdown nahi hai.
+      final int year = DateTime.now().year;
+
+      String twoDigits(int value) {
+        return value.toString().padLeft(2, '0');
+      }
+
+      // Selected month ka first date
+      final String monthStart = '$year-${twoDigits(monthNumber)}-01';
+
+      // Next month ka first date
+      final DateTime nextMonthDate = DateTime(year, monthNumber + 1, 1);
+
+      final String nextMonthStart =
+          '${nextMonthDate.year}-${twoDigits(nextMonthDate.month)}-01';
+
+      // Sirf selected student ki attendance fetch kar rahe hain.
+      // StudentId unique hone ki wajah se class + student ki
+      // composite Firestore index ki zaroorat nahi hogi.
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('attendance_records')
+          .where('studentId', isEqualTo: selectedStudentId)
+          .get();
+
+      int present = 0;
+      int absent = 0;
+
+      // Same date ko dobara count hone se rokne ke liye.
+      final Set<String> countedDates = {};
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        final String attendanceClass = data['class']?.toString() ?? '';
+
+        final String date = data['date']?.toString() ?? '';
+
+        final String status = data['status']?.toString() ?? '';
+
+        // Safety check:
+        // selected class ka attendance hi count hoga.
+        if (attendanceClass != selectedClass) {
+          continue;
+        }
+
+        if (date.isEmpty) {
+          continue;
+        }
+
+        // Sirf selected month ke dates.
+        if (date.compareTo(monthStart) < 0 ||
+            date.compareTo(nextMonthStart) >= 0) {
+          continue;
+        }
+
+        // Same student + same date sirf 1 baar count hoga.
+        if (!countedDates.add(date)) {
+          continue;
+        }
+
+        if (status == 'Present') {
+          present++;
+        } else if (status == 'Absent') {
+          absent++;
+        }
+      }
+
+      final int total = present + absent;
+
+      if (!mounted) return;
+
+      setState(() {
+        totalDaysController.text = total.toString();
+        presentController.text = present.toString();
+        absentController.text = absent.toString();
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        totalDaysController.clear();
+        presentController.clear();
+        absentController.clear();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to load attendance: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> sendReport() async {
@@ -140,13 +294,13 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
 
         CloudinaryResponse response = await cloudinary.uploadFile(
           CloudinaryFile.fromByteData(
-            // Try this method
             bytes.buffer.asByteData(),
             identifier: image.name,
             resourceType: CloudinaryResourceType.Image,
             folder: 'monthly_reports',
           ),
         );
+
         uploadedImageUrls.add(response.secureUrl);
       }
 
@@ -165,16 +319,23 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
             'presentDays': presentController.text,
             'absentDays': absentController.text,
             'remarks': remarksController.text,
-            'attachmentUrls': uploadedImageUrls, // List of URLs save hogi
+            'attachmentUrls': uploadedImageUrls,
+            'isRead': false,
             'createdAt': FieldValue.serverTimestamp(),
           });
-      await NotificationService.sendPushNotification(
-        targetRole: 'student',
-        title: 'Monthly Report Available',
-        body: 'Your report card for $selectedMonth is ready to view.',
-        notificationType: 'report',
-        relatedId: reportRef.id,
-      );
+
+      try {
+        await NotificationService.sendPushToUser(
+          targetUserId: selectedStudentId,
+          title: 'Monthly Report Available',
+          body: 'Your report card for $selectedMonth is ready to view.',
+          notificationType: 'report',
+          relatedId: reportRef.id,
+        );
+      } catch (notificationError) {
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+      }
+
       // 4. Fields Reset Logic
       _formKey.currentState!.reset();
 
@@ -184,7 +345,7 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
       remarksController.clear();
 
       setState(() {
-        _selectedImages = []; // Images list clear karein
+        _selectedImages = [];
         selectedClass = null;
         selectedStudentId = null;
         selectedStudentName = null;
@@ -220,8 +381,10 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
   }
 
   final List<PlatformFile> _selectedFiles = [];
+
   Future<void> _pickImages() async {
     final List<XFile> pickedFiles = await _picker.pickMultiImage();
+
     if (pickedFiles.isNotEmpty) {
       setState(() {
         _selectedImages.addAll(pickedFiles);
@@ -263,16 +426,17 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Form(
             key: _formKey,
-            // Validation sirf button click par hogi
             autovalidateMode: AutovalidateMode.disabled,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildSectionTitle("Student & Report Month"),
+
                 _buildCard([
                   DropdownButtonFormField<String>(
+                    initialValue: selectedClass,
                     decoration: InputDecoration(
-                      labelText: "Select Class",
+                      labelText: "Class",
                       prefixIcon: const Icon(
                         Icons.class_rounded,
                         color: Color(0xFF1E3A5F),
@@ -298,19 +462,20 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
                         ),
                       ),
                     ),
-                    items: classes
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => selectedClass = val);
-                        loadStudents(val);
-                        // validate() hata diya
-                      }
-                    },
-                    validator: (v) => v == null ? "Required" : null,
+                    items: selectedClass == null
+                        ? []
+                        : [
+                            DropdownMenuItem(
+                              value: selectedClass,
+                              child: Text(selectedClass!),
+                            ),
+                          ],
+                    onChanged: null,
+                    validator: (v) => v == null ? "Class not loaded" : null,
                   ),
+
                   const SizedBox(height: 15),
+
                   isLoadingStudents
                       ? const CircularProgressIndicator()
                       : DropdownButtonFormField<String>(
@@ -359,43 +524,62 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
                               final student = students.firstWhere(
                                 (s) => s.id == value,
                               );
+
                               setState(() {
                                 selectedStudentId = value;
                                 selectedStudentName = student['name'];
                               });
-                              // validate() hata diya
+
+                              // Student select hote hi
+                              // attendance automatically fetch
+                              fetchStudentMonthlyAttendance();
                             }
                           },
                           validator: (v) =>
                               v == null ? "Please select a student" : null,
                         ),
+
                   const SizedBox(height: 15),
+
                   _buildDropdown("Select Month", getMonthsList(), (val) {
-                    setState(() => selectedMonth = val);
-                    // validate() hata diya
+                    setState(() {
+                      selectedMonth = val;
+                    });
+
+                    // Month select/change hote hi
+                    // attendance automatically fetch
+                    fetchStudentMonthlyAttendance();
                   }),
                 ]),
+
                 _buildSectionTitle("Academic Performance"),
+
                 _buildCard([
                   _buildDropdown(
                     "Overall Performance",
                     ["Excellent", "Good", "Average"],
                     (val) => setState(() => selectedPerformance = val),
                   ),
+
                   const SizedBox(height: 15),
+
                   _buildDropdown(
                     "Homework Completion",
                     ["Always", "Mostly", "Rarely"],
                     (val) => setState(() => selectedHomework = val),
                   ),
+
                   const SizedBox(height: 15),
+
                   _buildDropdown(
                     "Class Participation",
                     ["Active", "Moderate", "Low"],
                     (val) => setState(() => selectedParticipation = val),
                   ),
                 ]),
+
                 _buildSectionTitle("Attendance & Remarks"),
+
                 _buildCard([
                   LayoutBuilder(
                     builder: (context, constraints) {
@@ -437,7 +621,9 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
                       );
                     },
                   ),
+
                   const SizedBox(height: 15),
+
                   TextFormField(
                     controller: remarksController,
                     maxLines: 3,
@@ -472,10 +658,15 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
                         value!.isEmpty ? 'Please enter remarks' : null,
                   ),
                 ]),
+
                 const SizedBox(height: 10),
+
                 _buildSectionTitle("Attachments (Optional)"),
+
                 _buildAttachmentSection(),
+
                 const SizedBox(height: 20),
+
                 Row(
                   children: [
                     Expanded(
@@ -624,7 +815,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
           borderSide: const BorderSide(color: Color(0xFF1746A2), width: 2),
         ),
       ),
-      // Validation add ki
       validator: (value) =>
           value == null || value.isEmpty ? 'Please select $label' : null,
       items: items
@@ -659,8 +849,9 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Required'; // Ye error red text mein dikhayega
+          return 'Required';
         }
+
         return null;
       },
     );

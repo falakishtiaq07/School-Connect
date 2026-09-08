@@ -1,23 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ReportDetailScreen extends StatelessWidget {
+class ReportDetailScreen extends StatefulWidget {
   final Map<String, dynamic> reportData;
+  final String reportId; // Yeh yahan define hai
 
-  const ReportDetailScreen({super.key, required this.reportData});
+  const ReportDetailScreen({
+    super.key,
+    required this.reportData,
+    required this.reportId,
+  });
+
+  @override
+  State<ReportDetailScreen> createState() => _ReportDetailScreenState();
+}
+
+class _ReportDetailScreenState extends State<ReportDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _markReportAsRead(); // Jaise hi screen khulay gi, yeh function chal jaye ga
+  }
+
+  Future<void> _markReportAsRead() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('monthly_reports')
+          .doc(widget.reportId)
+          .update({'isRead': true});
+    } catch (e) {
+      print("Error updating read status: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
-
       appBar: AppBar(
         elevation: 0,
         centerTitle: true,
         backgroundColor: Colors.grey.shade100,
         foregroundColor: Colors.white,
-
         title: Text(
-          "Report - ${reportData['month']}",
+          "Report - ${widget.reportData['month']}",
           style: const TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -25,7 +51,6 @@ class ReportDetailScreen extends StatelessWidget {
             letterSpacing: 0.3,
           ),
         ),
-
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -35,7 +60,6 @@ class ReportDetailScreen extends StatelessWidget {
             ),
           ),
         ),
-
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: Colors.white.withOpacity(0.08)),
@@ -48,10 +72,16 @@ class ReportDetailScreen extends StatelessWidget {
             _buildDetailCard("Academic Performance", [
               _buildPerformanceRow(
                 "Overall",
-                reportData['overallPerformance'] ?? "N/A",
+                widget.reportData['overallPerformance'] ?? "N/A",
               ),
-              _buildRow("Homework:", reportData['homeworkCompletion']),
-              _buildRow("Participation:", reportData['classParticipation']),
+              _buildRow(
+                "Homework:",
+                widget.reportData['homeworkCompletion'] ?? "N/A",
+              ),
+              _buildRow(
+                "Participation:",
+                widget.reportData['classParticipation'] ?? "N/A",
+              ),
             ]),
             const SizedBox(height: 2),
             _buildDetailCard("Attendance", [
@@ -60,27 +90,23 @@ class ReportDetailScreen extends StatelessWidget {
                   Expanded(
                     child: _buildAttendanceBox(
                       "Total",
-                      reportData['totalDays'].toString(),
+                      widget.reportData['totalDays']?.toString() ?? "0",
                       Colors.blue,
                     ),
                   ),
-
                   const SizedBox(width: 10),
-
                   Expanded(
                     child: _buildAttendanceBox(
                       "Present",
-                      reportData['presentDays'].toString(),
+                      widget.reportData['presentDays']?.toString() ?? "0",
                       Colors.green,
                     ),
                   ),
-
                   const SizedBox(width: 10),
-
                   Expanded(
                     child: _buildAttendanceBox(
                       "Absent",
-                      reportData['absentDays'].toString(),
+                      widget.reportData['absentDays']?.toString() ?? "0",
                       Colors.red,
                     ),
                   ),
@@ -89,17 +115,19 @@ class ReportDetailScreen extends StatelessWidget {
             ]),
             const SizedBox(height: 2),
             _buildDetailCard("Teacher Remarks", [
-              Text(reportData['remarks'] ?? "No remarks added."),
+              Text(widget.reportData['remarks'] ?? "No remarks added."),
             ]),
             const SizedBox(height: 2),
-            if (reportData['attachmentUrls'] != null &&
-                (reportData['attachmentUrls'] as List).isNotEmpty)
+            if (widget.reportData['attachmentUrls'] != null &&
+                (widget.reportData['attachmentUrls'] as List).isNotEmpty)
               _buildDetailCard("Attachments", [
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: (reportData['attachmentUrls'] as List).map((url) {
+                  children: (widget.reportData['attachmentUrls'] as List).map((
+                    url,
+                  ) {
                     return GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -191,7 +219,6 @@ class ReportDetailScreen extends StatelessWidget {
               ),
             ),
           ),
-
           Text(
             value,
             style: const TextStyle(
@@ -234,7 +261,6 @@ class ReportDetailScreen extends StatelessWidget {
               ),
             ),
           ),
-
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
@@ -268,9 +294,7 @@ class ReportDetailScreen extends StatelessWidget {
               color: color,
             ),
           ),
-
           const SizedBox(height: 6),
-
           Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),

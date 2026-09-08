@@ -10,6 +10,9 @@ import 'package:school_connect/screens/verify_challan_screen.dart';
 import 'package:school_connect/screens/welcome_screen.dart';
 import 'package:school_connect/screens/admin_profile_screen.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:school_connect/service/one_signal_service.dart';
+import 'package:school_connect/service/read_status_service.dart';
+import 'package:school_connect/service/unread_status_service.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -25,18 +28,47 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   static const _bg = Color(0xFFF0F4F8);
   static const _white = Colors.white;
 
+  // ── Unread Status ──────────────────────────────────────────────────────────
+  Map<String, bool> _unreadStatus = {
+    'complaints': false,
+    'verifyChallan': false,
+  };
+
+  // ── Load Unread Status ─────────────────────────────────────────────────────
+  Future<void> _loadUnreadStatus() async {
+    try {
+      final status = await UnreadService.getUnreadStatus();
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadStatus = status;
+      });
+    } catch (e) {
+      debugPrint('Error loading admin unread status: $e');
+    }
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  @override
+  void initState() {
+    super.initState();
+    _loadUnreadStatus();
+  }
+
   // ── Cards ─────────────────────────────────────────────────────────────────
-  late final List<_CardData> _cards = [
+  List<_CardData> get _cards => [
     _CardData(
       icon: Icons.people_alt_outlined,
       title: 'Manage Users',
       description: 'Add, edit or remove teacher and student accounts.',
-      buttonText: 'View All Users',
+      buttonText: 'Manage Users',
       onPressed: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
       ),
     ),
+
     _CardData(
       icon: Icons.campaign_outlined,
       title: 'Announcements',
@@ -47,46 +79,63 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         MaterialPageRoute(builder: (_) => const AdminAnnouncementsScreen()),
       ),
     ),
+
+    // ── Complaints ────────────────────────────────────────────────────────
     _CardData(
       icon: Icons.assignment_late_outlined,
       title: 'Complaints',
-      description: 'Review and resolve submissions from parents or staff.',
+      description: 'Review and resolve complaints submitted by students',
       buttonText: 'View Complaints',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const AdminComplaintsPage()),
-      ),
+      hasUnread: _unreadStatus['complaints'] ?? false,
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminComplaintsPage()),
+        );
+
+        await _loadUnreadStatus();
+      },
     ),
+
     _CardData(
       icon: Icons.receipt_long_outlined,
-      title: 'Generate Challan',
-      description: 'Create single or bulk fee challans for students.',
+      title: 'Generate Fee Challan',
+      description: 'Create fee challans for students.',
       buttonText: 'Create Challan',
       onPressed: () => _showChallanBottomSheet(),
     ),
+
     _CardData(
       icon: Icons.upload_file_outlined,
-      title: 'Bulk Import',
-      description: 'Import student records and fee data from Excel.',
-      buttonText: 'Import Students',
+      title: 'Fee Data',
+      description: 'Save student records and fee data.',
+      buttonText: 'Add Data',
       onPressed: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const BulkImportStudentsScreen()),
       ),
     ),
+
+    // ── Verify Challan ────────────────────────────────────────────────────
     _CardData(
       icon: Icons.verified_user_outlined,
       title: 'Verify Challan',
       description: 'Cross-check paid receipts and update payment status.',
-      buttonText: 'Verify Now',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const AdminVerifyChallanScreen()),
-      ),
+      buttonText: 'Verify',
+      hasUnread: _unreadStatus['verifyChallan'] ?? false,
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminVerifyChallanScreen()),
+        );
+
+        // Refresh unread status after returning
+        await _loadUnreadStatus();
+      },
     ),
   ];
 
-  // ── Logout ────────────────────────────────────────────────────────────────
+  // ── Logout Dialog ──────────────────────────────────────────────────────────
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -104,14 +153,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await OneSignal.logout();
-              await FirebaseAuth.instance.signOut();
-              if (ctx.mounted) {
-                Navigator.pushAndRemoveUntil(
-                  ctx,
-                  MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-                  (route) => false,
-                );
+              try {
+                await OneSignalService.logout();
+
+                await FirebaseAuth.instance.signOut();
+
+                if (ctx.mounted) {
+                  Navigator.pushAndRemoveUntil(
+                    ctx,
+                    MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+                    (route) => false,
+                  );
+                }
+              } catch (e) {
+                debugPrint('Admin logout error: $e');
+
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('Logout failed: $e'),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -128,7 +193,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Challan bottom sheet ──────────────────────────────────────────────────
+  // ── Challan Bottom Sheet ───────────────────────────────────────────────────
   void _showChallanBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -159,6 +224,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
             _bottomSheetOption(
               icon: Icons.person_outline,
               title: 'Single Challan',
@@ -173,7 +239,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 );
               },
             ),
+
             const SizedBox(height: 10),
+
             _bottomSheetOption(
               icon: Icons.group_outlined,
               title: 'Bulk Challan',
@@ -264,17 +332,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 900;
-    final isTablet = screenWidth > 600;
     final isMobile = screenWidth <= 600;
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: _bg,
       drawer: _buildDrawer(),
-      // SafeArea ko yahan body ke foran baad wrap kiya gaya hai
+
       body: Column(
         children: [
           _buildHeader(isMobile),
+
           Expanded(
             child: SafeArea(
               top: false,
@@ -284,6 +352,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 4),
+
                     const Text(
                       'Overview',
                       style: TextStyle(
@@ -293,7 +362,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         letterSpacing: 0.8,
                       ),
                     ),
+
                     const SizedBox(height: 4),
+
                     const Text(
                       'Admin Dashboard',
                       style: TextStyle(
@@ -302,11 +373,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         color: Color(0xFF1F2937),
                       ),
                     ),
+
                     const SizedBox(height: 24),
 
-                    // ── Responsive cards ─────────────────────────────────────────
+                    // ── Responsive Cards ────────────────────────────────
                     if (isMobile)
-                      // Mobile: ListView — no overflow, full width cards
                       ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -317,7 +388,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                       )
                     else
-                      // Tablet / Desktop: GridView with fixed aspect ratio
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -342,9 +412,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Header — responsive ────────────────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(bool isMobile) {
     final statusBarHeight = MediaQuery.of(context).padding.top;
+
     return Container(
       padding: EdgeInsets.only(
         left: 16,
@@ -364,13 +435,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ],
       ),
       child: isMobile
-          // ── Mobile header: 2 rows ──────────────────────────────────────
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
-                    // Menu button
                     InkWell(
                       onTap: () => _scaffoldKey.currentState?.openDrawer(),
                       borderRadius: BorderRadius.circular(8),
@@ -387,8 +456,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 10),
-                    // Brand
+
                     Container(
                       padding: const EdgeInsets.all(5),
                       decoration: BoxDecoration(
@@ -401,7 +471,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         size: 15,
                       ),
                     ),
+
                     const SizedBox(width: 8),
+
                     const Expanded(
                       child: Text(
                         'SchoolConnect',
@@ -416,8 +488,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ],
                 ),
+
                 const SizedBox(height: 6),
-                // Welcome row below on mobile
+
                 Container(
                   constraints: const BoxConstraints(minHeight: 42),
                   padding: const EdgeInsets.symmetric(
@@ -453,7 +526,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ],
             )
-          // ── Desktop/Tablet header: single row ─────────────────────────
           : Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -475,7 +547,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 14),
+
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
@@ -488,7 +562,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         size: 16,
                       ),
                     ),
+
                     const SizedBox(width: 10),
+
                     const Text(
                       'SchoolConnect',
                       style: TextStyle(
@@ -500,6 +576,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ],
                 ),
+
                 Row(
                   children: [
                     const Text(
@@ -510,7 +587,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+
                     const SizedBox(width: 12),
+
                     Container(
                       width: 36,
                       height: 36,
@@ -571,7 +650,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 12),
+
                 const Text(
                   'Admin',
                   style: TextStyle(
@@ -580,7 +661,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+
                 const SizedBox(height: 3),
+
                 Text(
                   'Administrator',
                   style: TextStyle(
@@ -591,13 +674,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ],
             ),
           ),
+
           const SizedBox(height: 12),
+
           _drawerItem(
             Icons.grid_view_rounded,
             'Dashboard',
             isSelected: true,
             onTap: () => Navigator.pop(context),
           ),
+
           _drawerItem(
             Icons.person_outline_rounded,
             'Profile',
@@ -609,9 +695,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               );
             },
           ),
+
           const Spacer(),
+
           const Divider(height: 1, color: Color(0xFFE5E7EB)),
+
           const SizedBox(height: 8),
+
           _drawerItem(
             Icons.logout_rounded,
             'Logout',
@@ -621,6 +711,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               _showLogoutDialog(context);
             },
           ),
+
           const SizedBox(height: 16),
         ],
       ),
@@ -637,6 +728,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final color = isLogout
         ? Colors.red.shade600
         : (isSelected ? _navy : const Color(0xFF374151));
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
@@ -659,7 +751,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Grid card (tablet/desktop) — uses Expanded safely inside GridView ──────
+  // ── Grid Card ─────────────────────────────────────────────────────────────
   Widget _buildGridCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -677,7 +769,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top strip
           Container(
             height: 4,
             decoration: const BoxDecoration(
@@ -688,22 +779,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
           ),
+
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2F7),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(card.icon, color: _navy, size: 22),
+                  // Icon + Red Dot
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        // existing icon container
+                        child: Icon(
+                          card.icon,
+                          // existing styling
+                        ),
+                      ),
+
+                      if (card.hasUnread)
+                        Positioned(
+                          right: -3,
+                          top: -3,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+
                   const SizedBox(height: 12),
+
                   Text(
                     card.title,
                     style: const TextStyle(
@@ -712,7 +824,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       color: Color(0xFF1A2A3A),
                     ),
                   ),
+
                   const SizedBox(height: 5),
+
                   Expanded(
                     child: Text(
                       card.description,
@@ -725,7 +839,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 12),
+
                   SizedBox(
                     width: double.infinity,
                     height: 36,
@@ -756,7 +872,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Mobile card — horizontal layout, no overflow ───────────────────────────
+  // ── Mobile Card ────────────────────────────────────────────────────────────
   Widget _buildMobileCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -775,7 +891,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top strip
           Container(
             height: 4,
             decoration: const BoxDecoration(
@@ -786,23 +901,42 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
           ),
+
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Icon box
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2F7),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Icon(card.icon, color: _navy, size: 24),
+                // Icon + Red Dot
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      // existing icon container
+                      child: Icon(
+                        card.icon,
+                        // existing styling
+                      ),
+                    ),
+
+                    if (card.hasUnread)
+                      Positioned(
+                        right: -3,
+                        top: -3,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+
                 const SizedBox(width: 14),
-                // Text + button
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -816,7 +950,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           color: Color(0xFF1A2A3A),
                         ),
                       ),
+
                       const SizedBox(height: 4),
+
                       Text(
                         card.description,
                         maxLines: 2,
@@ -827,7 +963,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           height: 1.5,
                         ),
                       ),
+
                       const SizedBox(height: 10),
+
                       SizedBox(
                         width: double.infinity,
                         height: 36,
@@ -860,13 +998,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 }
 
-// ── Data model ────────────────────────────────────────────────────────────────
+// ── Data Model ────────────────────────────────────────────────────────────────
 class _CardData {
   final IconData icon;
   final String title;
   final String description;
   final String buttonText;
   final VoidCallback onPressed;
+  final bool hasUnread;
 
   const _CardData({
     required this.icon,
@@ -874,5 +1013,6 @@ class _CardData {
     required this.description,
     required this.buttonText,
     required this.onPressed,
+    this.hasUnread = false,
   });
 }

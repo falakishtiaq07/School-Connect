@@ -102,18 +102,45 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         'attachment': fileUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      await NotificationService.sendPushNotification(
-        targetRole: 'teacher',
-        title: 'New Announcement',
-        body: titleController.text,
-        notificationType: 'announcement',
-      );
-      await NotificationService.sendPushNotification(
-        targetRole: 'student',
-        title: 'New Announcement',
-        body: titleController.text,
-        notificationType: 'announcement',
-      );
+
+      /// --------------------------------------------------------
+      /// NOTIFICATION — sirf jo audience actually select ki gayi ho,
+      /// aur tag filters ki jagah exact uid list se (reliable).
+      /// --------------------------------------------------------
+      try {
+        final List<String> recipientUids = [];
+
+        if (sendToTeachers) {
+          final teacherSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .where('role', isEqualTo: 'Teacher')
+              .get();
+          recipientUids.addAll(
+            teacherSnap.docs.map((d) => (d.data()['uid'] ?? d.id).toString()),
+          );
+        }
+
+        if (sendToStudents) {
+          final studentSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .where('role', isEqualTo: 'Student')
+              .get();
+          recipientUids.addAll(
+            studentSnap.docs.map((d) => (d.data()['uid'] ?? d.id).toString()),
+          );
+        }
+
+        await NotificationService.sendPushToUsers(
+          userIds: recipientUids,
+          title: 'New Announcement',
+          body: titleController.text,
+          notificationType: 'announcement',
+        );
+      } catch (notificationError) {
+        // Announcement Firestore mein save ho chuka hai — notification
+        // fail hone par bhi poora flow crash/error nahi dikhana chahiye.
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+      }
 
       titleController.clear();
       descController.clear();

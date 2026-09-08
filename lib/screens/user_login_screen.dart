@@ -5,8 +5,8 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:school_connect/auth/forgot_password_screen.dart';
 import 'package:school_connect/screens/student_dashboard_screen.dart';
 import 'package:school_connect/screens/teacher_dashboard_screen.dart';
-//import 'package:school_connect/auth/otp_verification_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:school_connect/service/one_signal_service.dart';
 
 class UserLoginScreen extends StatefulWidget {
   const UserLoginScreen({super.key});
@@ -235,7 +235,7 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
                             return;
                           }
-                          
+
                           String? uid = credential.user?.uid;
 
                           if (uid != null) {
@@ -253,23 +253,18 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                   .trim();
 
                               print("USER ROLE IS: $userRole");
+                              String? studentClass;
 
-                              await OneSignal.login(uid);
-                              await OneSignal.User.addTagWithKey(
-                                "role",
-                                userRole,
-                              );
                               if (userRole == 'student') {
-                                String studentClass = userDoc
-                                    .get('class')
-                                    .toString(); // ya jo bhi field name ho
-                                await OneSignal.User.addTagWithKey(
-                                  "class",
-                                  studentClass,
-                                );
+                                studentClass = userDoc.get('class').toString();
                               }
 
-                              // 1. Check: Agar Admin user screen se login karne aaye (Strictly Block)
+                              await OneSignalService.setupOneSignal(
+                                uid,
+                                userRole,
+                                studentClass: studentClass,
+                                forceRefresh: true,
+                              );
                               if (userRole == 'admin') {
                                 await FirebaseAuth.instance.signOut();
 
@@ -284,9 +279,7 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                     ),
                                   );
                                 }
-                              }
-                              // ✅ 2. Agar sab sahi hai (Yahan Role Check karega)
-                              else {
+                              } else {
                                 if (context.mounted) {
                                   // Pehle Success message dikhayen
                                   ScaffoldMessenger.of(context).showSnackBar(

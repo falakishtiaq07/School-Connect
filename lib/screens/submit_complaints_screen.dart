@@ -23,7 +23,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
   bool _titleError = false;
   bool _detailError = false;
   bool _categoryError = false;
-  int _selectedTab = 0;
   final List<String> _categories = [
     "Infrastructure",
     "Staff Issue",
@@ -65,14 +64,19 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
         "priority": _selectedPriority,
         "status": "Pending",
         "sendTo": "Admin",
+        "isRead": false,
         "createdAt": FieldValue.serverTimestamp(),
       });
-      await NotificationService.sendPushNotification(
-        targetRole: 'admin',
-        title: 'New Complaint',
-        body: '$_name has submitted a new complaint.',
-        notificationType: 'complaint',
-      );
+      try {
+        await NotificationService.sendPushToUser(
+          targetRole: 'admin',
+          title: 'New Complaint',
+          body: '$_name has submitted a new complaint.',
+          notificationType: 'complaint',
+        );
+      } catch (notificationError) {
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+      }
       if (mounted) {
         _titleController.clear();
         _detailController.clear();
@@ -80,7 +84,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text("Complaint Submitted Successfully!"),
-            backgroundColor: green,
+            backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
@@ -134,16 +138,13 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
     }
   }
 
-  // ---------------- Responsive helper ----------------
-  double _horizontalPadding(double width) {
-    if (width >= 1200) return width * 0.15;
-    if (width >= 900) return 48;
-    if (width >= 600) return 28;
-    return 16;
-  }
-
   @override
   Widget build(BuildContext context) {
+    double screenWidth = MediaQuery.of(context).size.width;
+
+    // Screen size ke mutabiq dynamic padding taaki web par bhi space zaya na ho
+    double horizontalPadding = screenWidth > 900 ? 40 : 16;
+
     return Scaffold(
       backgroundColor: lightBg,
       appBar: _buildAppBar(),
@@ -154,9 +155,14 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
               child: SafeArea(
                 child: Column(
                   children: [
-                    // Tabs
+                    // Tabs Container
                     Container(
-                      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      margin: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        16,
+                        horizontalPadding,
+                        8,
+                      ),
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -206,21 +212,14 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                         children: [
                           // New Complaint Tab
                           SingleChildScrollView(
-                            padding: EdgeInsets.fromLTRB(
-                              _horizontalPadding(
-                                MediaQuery.of(context).size.width,
-                              ),
-                              10,
-                              _horizontalPadding(
-                                MediaQuery.of(context).size.width,
-                              ),
-                              28,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: horizontalPadding,
+                              vertical: 10,
                             ),
                             child: Column(
                               children: [
                                 _buildInfoCard(),
                                 const SizedBox(height: 18),
-
                                 _sectionCard(
                                   child: Column(
                                     children: [
@@ -232,7 +231,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
 
                                       // Category Dropdown
                                       DropdownButtonFormField<String>(
-                                        initialValue: _selectedCategory,
+                                        value: _selectedCategory,
                                         decoration: _inputDecoration(
                                           "Complaint Category *",
                                           icon: Icons.apps_rounded,
@@ -288,23 +287,29 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                                       ),
                                       const SizedBox(height: 22),
 
-                                      const Text(
-                                        "Priority Level",
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                          color: navy,
+                                      const Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          "Priority Level",
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                            color: navy,
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(height: 10),
-                                      Wrap(
-                                        spacing: 10,
-                                        runSpacing: 10,
-                                        children: ["High", "Medium", "Low"]
-                                            .map(
-                                              (level) => _priorityChip(level),
-                                            )
-                                            .toList(),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Wrap(
+                                          spacing: 10,
+                                          runSpacing: 10,
+                                          children: ["High", "Medium", "Low"]
+                                              .map(
+                                                (level) => _priorityChip(level),
+                                              )
+                                              .toList(),
+                                        ),
                                       ),
                                       const SizedBox(height: 26),
                                       SizedBox(
@@ -343,15 +348,9 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
 
                           // My Complaints Tab
                           SingleChildScrollView(
-                            padding: EdgeInsets.fromLTRB(
-                              _horizontalPadding(
-                                MediaQuery.of(context).size.width,
-                              ),
-                              18,
-                              _horizontalPadding(
-                                MediaQuery.of(context).size.width,
-                              ),
-                              28,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: horizontalPadding,
+                              vertical: 18,
                             ),
                             child: Column(
                               children: [
@@ -380,7 +379,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                                   ],
                                 ),
                                 const SizedBox(height: 14),
-
                                 _buildMyComplaintsList(),
                               ],
                             ),
@@ -418,10 +416,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
           ),
         ),
       ),
-      // bottom: PreferredSize(
-      //   preferredSize: const Size.fromHeight(1),
-      //   child: Container(height: 1, color: Colors.white.withOpacity(0.08)),
-      // ),
     );
   }
 
@@ -458,7 +452,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
   Widget _sectionCard({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -532,11 +526,8 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('complaints')
-          .where(
-            'userId',
-            isEqualTo: FirebaseAuth.instance.currentUser?.uid,
-          ) // Sirf us user ki complaints
-          .orderBy('createdAt', descending: true) // Nayi complaint sab se upar
+          .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+          .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
@@ -561,12 +552,12 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
           itemBuilder: (context, index) {
             var data = complaints[index].data() as Map<String, dynamic>;
 
-            // Status ka color manage karne ke liye
             Color statusColor = accentBlue; // Pending
             if (data['status'] == 'Accepted') {
               statusColor = green;
-            } else if (data['status'] == 'Rejected')
+            } else if (data['status'] == 'Rejected') {
               statusColor = red;
+            }
 
             return _buildComplaintCard(data, statusColor);
           },
@@ -627,7 +618,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
         child: InkWell(
           onTap: () => _showComplaintDetails(data),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
                 Container(
@@ -649,7 +640,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        data['title'],
+                        data['title'] ?? '',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -660,7 +651,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        "Category: ${data['category']}",
+                        "Category: ${data['category'] ?? ''}",
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade600,
@@ -679,7 +670,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    data['status'],
+                    data['status'] ?? '',
                     style: TextStyle(
                       color: statusColor,
                       fontWeight: FontWeight.bold,
@@ -695,60 +686,97 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
     );
   }
 
+  // ---------------- Full Screen Complaint Details Page (No Width Limit) ----------------
   void _showComplaintDetails(Map<String, dynamic> data) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text(
-          "Complaint Details",
-          style: TextStyle(fontWeight: FontWeight.bold, color: navy),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _detailRow("Category:", data['category']),
-              _detailRow("Title:", data['title']),
-              _detailRow("Details:", data['details']),
-              _detailRow("Submitted By:", _name),
-              _detailRow("Submitted To:", data['sendTo'] ?? "Admin"),
-              _detailRow("Status:", data['status']),
-            ],
+    double screenWidth = MediaQuery.of(context).size.width;
+    double detailsPadding = screenWidth > 900 ? 40 : 16;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: lightBg,
+          appBar: AppBar(
+            backgroundColor: navy,
+            foregroundColor: Colors.white,
+            title: const Text("Complaint Details"),
+            centerTitle: true,
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [navy, navyDark],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+          ),
+          body: SingleChildScrollView(
+            padding: EdgeInsets.all(detailsPadding),
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: borderColor),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Center(
+                      child: Text(
+                        "Complaint Information",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: navy,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _detailRow("Category:", data['category']),
+                    const Divider(height: 24),
+                    _detailRow("Title:", data['title']),
+                    const Divider(height: 24),
+                    _detailRow("Details:", data['details']),
+                    const Divider(height: 24),
+                    _detailRow("Submitted By:", _name),
+                    const Divider(height: 24),
+                    _detailRow("Submitted To:", data['sendTo'] ?? "Admin"),
+                    const Divider(height: 24),
+                    _detailRow("Status:", data['status']),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Close", style: TextStyle(color: navy)),
-          ),
-        ],
       ),
     );
   }
 
   Widget _detailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
+            width: 140,
             child: Text(
               label,
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 color: navy,
-                fontSize: 13.5,
+                fontSize: 14.5,
               ),
             ),
           ),
           Expanded(
             child: Text(
-              value,
-              style: const TextStyle(fontSize: 13.5, height: 1.4),
+              value ?? '',
+              style: const TextStyle(fontSize: 14.5, height: 1.4),
             ),
           ),
         ],

@@ -25,18 +25,14 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   String? _selectedGrade;
   bool _isLoadingStudents = false;
 
-  final List<String> _grades = [
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '10',
-  ];
+  // Classes are read live from `users` (role == Student) — the same single
+  // source of truth every other screen in the app now uses. No hardcoded
+  // 1–10 list, so a class only shows up here while it actually has students.
+  List<String> _availableGrades = [];
+  bool _isLoadingGrades = true;
+
+  String? get _dropdownSafeGrade =>
+      _availableGrades.contains(_selectedGrade) ? _selectedGrade : null;
 
   // ── Step 2: Dates + Month only (no fee rows) ──────────────────────────────
   String _selectedMonth = _currentMonthYear();
@@ -48,6 +44,9 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   List<Map<String, dynamic>> _students = [];
   Set<int> _selectedIndexes = {};
   bool _selectAll = true;
+  // Students found in `users` for this class but skipped because no
+  // matching `student_profile` fee record exists.
+  List<String> _skippedNoProfile = [];
 
   // ── Generation ────────────────────────────────────────────────────────────
   bool _isGenerating = false;
@@ -59,6 +58,12 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   List<String> _genSkipped = [];
   // Per-student status for save dialog
   List<_ChallanSaveResult> _saveResults = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchGradesFromUsers();
+  }
 
   static String _currentMonthYear() {
     const months = [
@@ -98,6 +103,35 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     return months.map((m) => '$m-$year').toList();
   }();
 
+  // ── Load classes from users ────────────────────────────────────────────────
+  Future<void> _fetchGradesFromUsers() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'Student')
+          .get();
+
+      final Set<String> classSet = {};
+      for (final doc in snap.docs) {
+        final cls = (doc.data()['class'] ?? '').toString().trim();
+        if (cls.isNotEmpty) classSet.add(cls);
+      }
+
+      if (mounted) {
+        setState(() {
+          _availableGrades = classSet.toList()..sort();
+          _isLoadingGrades = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching classes: $e');
+      if (mounted) {
+        setState(() => _isLoadingGrades = false);
+        _showSnack('Could not load classes: $e', isError: true);
+      }
+    }
+  }
+
   // ── Load students ─────────────────────────────────────────────────────────
   Future<void> _loadStudents() async {
     if (_selectedGrade == null) {
@@ -110,15 +144,71 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
       _selectedIndexes = {};
       _genDone = false;
       _saveResults = [];
+      _skippedNoProfile = [];
     });
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('student_profile')
-          .where('grade', isEqualTo: _selectedGrade)
-          .orderBy('roll_no')
+      // 1. Roster comes from `users` — the same collection Manage Users,
+      //    Promote, and Generate Challan already treat as the source of
+      //    truth for who's actually enrolled in a class right now.
+      final usersSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'Student')
+          .where('class', isEqualTo: _selectedGrade)
           .get();
 
-      final list = snap.docs.map((d) => {'_docId': d.id, ...d.data()}).toList();
+      // 2. Fee data comes from `student_profile`, matched in-memory by
+      //    roll_no — one query instead of one lookup per student.
+      final profileSnap = await FirebaseFirestore.instance
+          .collection('student_profile')
+          .where('grade', isEqualTo: _selectedGrade)
+          .get();
+
+      final Map<String, Map<String, dynamic>> profileByRoll = {
+        for (final doc in profileSnap.docs)
+          if ((doc.data()['roll_no'] ?? '').toString().trim().isNotEmpty)
+            doc.data()['roll_no'].toString().trim(): {
+              '_docId': doc.id,
+              ...doc.data(),
+            },
+      };
+
+      final List<Map<String, dynamic>> list = [];
+      final List<String> skipped = [];
+
+      for (final userDoc in usersSnap.docs) {
+        final userData = userDoc.data();
+        final rollNo = (userData['rollNo'] ?? '').toString().trim();
+        final name = (userData['name'] ?? 'Unknown').toString();
+        final uid = (userData['uid'] ?? userDoc.id).toString();
+
+        if (rollNo.isEmpty) {
+          skipped.add('$name — no roll number on file, skipped');
+          continue;
+        }
+
+        final profile = profileByRoll[rollNo];
+        if (profile == null) {
+          skipped.add(
+            '$name (Roll# $rollNo) — no fee record found in student_profile, skipped',
+          );
+          continue;
+        }
+
+        list.add({
+          ...profile,
+          '_uid': uid,
+          'roll_no': rollNo,
+          'student_name': name,
+          'father_name':
+              profile['father_name'] ?? userData['father_name'] ?? '',
+        });
+      }
+
+      list.sort(
+        (a, b) => (a['roll_no'] ?? '').toString().compareTo(
+          (b['roll_no'] ?? '').toString(),
+        ),
+      );
 
       if (mounted) {
         setState(() {
@@ -126,10 +216,20 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           _selectedIndexes = Set.from(List.generate(list.length, (i) => i));
           _selectAll = true;
           _isLoadingStudents = false;
+          _skippedNoProfile = skipped;
         });
       }
+
       if (list.isEmpty) {
-        _showSnack('No students found for $_selectedGrade.', isError: true);
+        _showSnack(
+          'No students with fee records found for Class $_selectedGrade.',
+          isError: true,
+        );
+      } else if (skipped.isNotEmpty) {
+        _showSnack(
+          '${skipped.length} student(s) skipped — no fee record found. See list below.',
+          isError: true,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -192,7 +292,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   Future<String?> _uploadToCloudinary(Uint8List pdfBytes, String rollNo) async {
     const cloudName = 'dkjsza6pw'; // ← apna Cloudinary cloud name
     const uploadPreset = 'challans-pdf'; // ← unsigned upload preset
-    // const folder = 'challans';
 
     final uri = Uri.parse(
       'https://api.cloudinary.com/v1_1/$cloudName/raw/upload',
@@ -221,6 +320,7 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   // ── Bulk PDF generation — separate PDF per student → Cloudinary → Firestore
   Future<void> _generateBulkChallans() async {
     final selected = _selectedIndexes.toList()..sort();
+
     if (selected.isEmpty) {
       _showSnack('No students selected.', isError: true);
       return;
@@ -231,11 +331,13 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     String schoolAddress = 'School Address';
     String schoolPhone = '000-0000000';
     String kuickpayId = '0000000000000';
+
     try {
       final doc = await FirebaseFirestore.instance
           .collection('settings')
           .doc('school_info')
           .get();
+
       if (doc.exists) {
         schoolName = doc['school_name'] ?? schoolName;
         schoolAddress = doc['address'] ?? schoolAddress;
@@ -258,98 +360,200 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     final fs = FirebaseFirestore.instance;
 
     for (final idx in selected) {
-      final student = _students[idx];
-      final rollNo = student['roll_no']?.toString() ?? '';
-      final name = student['student_name']?.toString() ?? '';
-      final challanNo = 'CH-${DateTime.now().year}-${rollNo}-${idx + 1}';
-      final fatherName = student['father_name']?.toString() ?? '';
-      final grade = student['grade']?.toString() ?? '';
-
-      // Fees nested map safely extract
-      final feesRaw = student['fees'];
-      final fees = feesRaw is Map
-          ? Map<String, dynamic>.from(feesRaw)
-          : <String, dynamic>{};
-
-      // School Fee + Transport Fee only
-      final studentFees = <FeeParticular>[
-        FeeParticular(
-          name: 'School Fee',
-          amount: (fees['school_fee'] ?? 0).toDouble(),
-        ),
-        FeeParticular(
-          name: 'Transport Fee',
-          amount: (fees['transport_fee'] ?? 0).toDouble(),
-        ),
-      ].where((f) => f.amount > 0).toList();
-
-      if (rollNo.isEmpty || name.isEmpty) {
-        _genSkipped.add(
-          '${name.isEmpty ? "Unknown" : name} (Roll# $rollNo) — incomplete data',
-        );
-        if (mounted) setState(() => _genProgress++);
-        continue;
-      }
-
-      final challanData = ChallanData(
-        schoolName: schoolName,
-        schoolAddress: schoolAddress,
-        schoolPhone: schoolPhone,
-        kuickpayId: kuickpayId,
-        challanNo: challanNo,
-        rollNo: rollNo,
-        studentName: name,
-        fatherName: fatherName,
-        classSection: grade,
-        month: _selectedMonth,
-        issueDate: _fmtDate(_issueDate),
-        dueDate: _fmtDate(_dueDate),
-        validTill: _fmtDate(_validTill),
-        feeParticulars: studentFees,
-      );
-
-      // ── 1. Generate separate PDF for this student (3 copies) ──
-      final singlePdf = pw.Document();
-      ChallanPdfService.addChallanPage(singlePdf, challanData);
-      final pdfBytes = await singlePdf.save();
-
-      // ── 2. Upload to Cloudinary ──
-      String? pdfUrl;
       try {
-        pdfUrl = await _uploadToCloudinary(pdfBytes, rollNo);
-      } catch (_) {
-        pdfUrl = null;
-      }
+        final student = _students[idx];
 
-      // ── 3. Save to Firestore challans collection (roll_no verified) ──
-      if (pdfUrl != null) {
+        final rollNo = student['roll_no']?.toString() ?? '';
+        final name = student['student_name']?.toString() ?? '';
+        final uid = student['_uid']?.toString() ?? '';
+
+        final challanNo = 'CH-${DateTime.now().year}-${rollNo}-${idx + 1}';
+
+        final fatherName = student['father_name']?.toString() ?? '';
+
+        // IMPORTANT:
+        // users collection mein class field use ho rahi hai.
+        final className = student['class']?.toString() ?? _selectedGrade ?? '';
+
+        // Fees nested map safely extract
+        final feesRaw = student['fees'];
+
+        final fees = feesRaw is Map
+            ? Map<String, dynamic>.from(feesRaw)
+            : <String, dynamic>{};
+
+        final schoolFee = (fees['school_fee'] ?? 0).toDouble();
+
+        final acCharges = (fees['ac_charges'] ?? 0).toDouble();
+
+        final stationaryFee = (fees['stationary_fee'] ?? 0).toDouble();
+
+        final totalAmount = schoolFee + acCharges + stationaryFee;
+
+        final studentFees = <FeeParticular>[
+          FeeParticular(name: 'School Fee', amount: schoolFee),
+          FeeParticular(name: 'AC Charges', amount: acCharges),
+          FeeParticular(name: 'Stationary Fee', amount: stationaryFee),
+        ].where((f) => f.amount > 0).toList();
+
+        if (rollNo.isEmpty || name.isEmpty || uid.isEmpty) {
+          _genSkipped.add(
+            '${name.isEmpty ? "Unknown" : name} '
+            '(Roll# $rollNo) — incomplete data',
+          );
+
+          if (mounted) {
+            setState(() => _genProgress++);
+          }
+
+          continue;
+        }
+
+        final challanData = ChallanData(
+          schoolName: schoolName,
+          schoolAddress: schoolAddress,
+          schoolPhone: schoolPhone,
+          kuickpayId: kuickpayId,
+          challanNo: challanNo,
+          rollNo: rollNo,
+          studentName: name,
+          fatherName: fatherName,
+
+          // IMPORTANT
+          classSection: className,
+
+          month: _selectedMonth,
+          issueDate: _fmtDate(_issueDate),
+          dueDate: _fmtDate(_dueDate),
+          validTill: _fmtDate(_validTill),
+          feeParticulars: studentFees,
+        );
+
+        // ─────────────────────────────
+        // 1. Generate PDF
+        // ─────────────────────────────
+        final singlePdf = pw.Document();
+
+        ChallanPdfService.addChallanPage(singlePdf, challanData);
+
+        final pdfBytes = await singlePdf.save();
+
+        // ─────────────────────────────
+        // 2. Upload to Cloudinary
+        // ─────────────────────────────
+        String? pdfUrl;
+
+        try {
+          pdfUrl = await _uploadToCloudinary(pdfBytes, rollNo);
+        } catch (e) {
+          debugPrint('CLOUDINARY ERROR (roll $rollNo): $e');
+
+          pdfUrl = null;
+        }
+
+        if (pdfUrl == null) {
+          _genSkipped.add('$name (Roll# $rollNo) — Cloudinary upload failed');
+
+          _saveResults.add(
+            _ChallanSaveResult(
+              rollNo: rollNo,
+              name: name,
+              pdfUrl: '',
+              success: false,
+            ),
+          );
+
+          if (mounted) {
+            setState(() => _genProgress++);
+          }
+
+          continue;
+        }
+
+        // ─────────────────────────────
+        // 3. Create challan reference
+        // ─────────────────────────────
+        //
+        // IMPORTANT:
+        // challanRef ko try ke BAHAR declare kiya hai
+        // taake neeche notification mein bhi use ho sake.
+        //
         final challanRef = fs.collection('challans').doc();
 
-        await challanRef.set({
-          'challan_no': challanNo,
-          'roll_no': rollNo,
-          'student_name': name,
-          'father_name': fatherName,
-          'grade': grade,
-          'month': _selectedMonth,
-          'issue_date': _fmtDate(_issueDate),
-          'due_date': _fmtDate(_dueDate),
-          'valid_till': _fmtDate(_validTill),
-          'pdf_url': pdfUrl,
-          'school_fee': fees['school_fee'] ?? 0,
-          'transport_fee': fees['transport_fee'] ?? 0,
-          'total_fee': challanData.totalAmount,
-          'created_at': FieldValue.serverTimestamp(),
-          'status': 'unpaid',
-        });
-        await NotificationService.sendPushNotification(
-          targetRole: 'student',
-          title: 'New Fee Challan',
-          body: 'Your fee challan for $_selectedMonth has been generated.',
-          notificationType: 'challan',
-          relatedId: challanRef.id,
-        );
+        // ─────────────────────────────
+        // 4. Save challan to Firestore
+        // ─────────────────────────────
+        try {
+          await challanRef.set({
+            'challanNo': challanNo,
+            'studentId': uid,
+            'studentName': name,
+            'rollNo': rollNo,
+
+            // users collection ka class
+            'classSection': className,
+
+            'month': _selectedMonth,
+            'issueDate': _fmtDate(_issueDate),
+            'dueDate': _fmtDate(_dueDate),
+            'validTill': _fmtDate(_validTill),
+            'pdfUrl': pdfUrl,
+            'totalAmount': totalAmount,
+            'createdAt': FieldValue.serverTimestamp(),
+            'status': 'Unpaid',
+          });
+
+          debugPrint('CHALLAN SAVED SUCCESSFULLY: ${challanRef.id}');
+        } catch (e, st) {
+          debugPrint('CHALLAN FIRESTORE SAVE ERROR (roll $rollNo): $e');
+
+          debugPrintStack(stackTrace: st);
+
+          _genSkipped.add('$name (Roll# $rollNo) — Firestore save failed: $e');
+
+          _saveResults.add(
+            _ChallanSaveResult(
+              rollNo: rollNo,
+              name: name,
+              pdfUrl: pdfUrl,
+              success: false,
+            ),
+          );
+
+          if (mounted) {
+            setState(() => _genProgress++);
+          }
+
+          continue;
+        }
+
+        // ─────────────────────────────
+        // 5. Notify ONLY this student
+        // ─────────────────────────────
+        try {
+          await NotificationService.sendPushToUser(
+            targetUserId: uid,
+            title: 'New Fee Challan',
+            body:
+                'Your fee challan for $_selectedMonth has been generated. '
+                'Total: Rs. ${totalAmount.toStringAsFixed(0)}.',
+            notificationType: 'fee_challan',
+
+            // Ab challanRef scope mein available hai
+            relatedId: challanRef.id,
+          );
+        } catch (notificationError) {
+          debugPrint(
+            'NOTIFICATION ERROR (roll $rollNo): '
+            '$notificationError',
+          );
+        }
+
+        // ─────────────────────────────
+        // 6. Success
+        // ─────────────────────────────
         _genSaved++;
+
         _saveResults.add(
           _ChallanSaveResult(
             rollNo: rollNo,
@@ -358,23 +562,36 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
             success: true,
           ),
         );
-      } else {
-        _genSkipped.add('$name (Roll# $rollNo) — Cloudinary upload failed');
-        _saveResults.add(
-          _ChallanSaveResult(
-            rollNo: rollNo,
-            name: name,
-            pdfUrl: '',
-            success: false,
-          ),
-        );
-      }
 
-      _genSuccess++;
-      if (mounted) setState(() => _genProgress++);
-      await Future.delayed(const Duration(milliseconds: 20));
+        _genSuccess++;
+
+        if (mounted) {
+          setState(() => _genProgress++);
+        }
+
+        await Future.delayed(const Duration(milliseconds: 20));
+      } catch (e, st) {
+        // Kisi bhi unexpected error ki wajah se
+        // poora bulk generation stuck nahi hoga.
+        debugPrint('BULK CHALLAN ERROR at index $idx: $e');
+
+        debugPrintStack(stackTrace: st);
+
+        final student = _students[idx];
+        final name = student['student_name']?.toString() ?? 'Unknown';
+        final rollNo = student['roll_no']?.toString() ?? '';
+
+        _genSkipped.add('$name (Roll# $rollNo) — $e');
+
+        if (mounted) {
+          setState(() => _genProgress++);
+        }
+      }
     }
 
+    // ─────────────────────────────
+    // Generation complete
+    // ─────────────────────────────
     if (mounted) {
       setState(() {
         _isGenerating = false;
@@ -478,22 +695,31 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   Widget _step1Card() {
     return _card(
       stepNo: '1',
-      title: 'Select Grade',
+      title: 'Select Class',
       child: Column(
         children: [
-          _dropField(
-            label: 'Grade',
-            value: _selectedGrade,
-            items: _grades,
-            onChanged: (v) => setState(() => _selectedGrade = v),
-            hint: 'Select grade',
-          ),
+          _isLoadingGrades
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: LinearProgressIndicator(),
+                )
+              : _dropField(
+                  label: 'Grade',
+                  value: _dropdownSafeGrade,
+                  items: _availableGrades,
+                  onChanged: (v) => setState(() => _selectedGrade = v),
+                  hint: _availableGrades.isEmpty
+                      ? 'No classes found yet'
+                      : 'Select Class',
+                ),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
             height: 46,
             child: ElevatedButton.icon(
-              onPressed: _isLoadingStudents ? null : _loadStudents,
+              onPressed: (_isLoadingStudents || _availableGrades.isEmpty)
+                  ? null
+                  : _loadStudents,
               icon: _isLoadingStudents
                   ? const SizedBox(
                       width: 18,
@@ -508,6 +734,7 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: _accent,
                 foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey.shade300,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -566,7 +793,7 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'Fee will be auto-fetched from each student\'s record (School Fee + Transport Fee).',
+                    'Fee will be auto-fetched from each student\'s record (School Fee + AC Charges + Stationary Fee).',
                     style: TextStyle(
                       fontSize: 12,
                       color: _navy,
@@ -592,6 +819,54 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           if (_students.isEmpty && !_isLoadingStudents)
             _emptyStudents()
           else if (_students.isNotEmpty) ...[
+            if (_skippedNoProfile.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: Colors.orange.shade800,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_skippedNoProfile.length} student(s) skipped',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ..._skippedNoProfile.map(
+                      (s) => Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '• $s',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             // Select all bar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -648,8 +923,9 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                     ? Map<String, dynamic>.from(feesRaw)
                     : <String, dynamic>{};
                 final schoolFee = (fees['school_fee'] ?? 0).toDouble();
-                final transportFee = (fees['transport_fee'] ?? 0).toDouble();
-                final totalFee = schoolFee + transportFee;
+                final acCharges = (fees['ac_charges'] ?? 0).toDouble();
+                final stationaryFee = (fees['stationary_fee'] ?? 0).toDouble();
+                final totalFee = schoolFee + acCharges + stationaryFee;
 
                 return InkWell(
                   onTap: () {
@@ -686,7 +962,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // ── Student name (not father name) ──
                               Text(
                                 s['student_name']?.toString() ?? '—',
                                 style: const TextStyle(
@@ -696,7 +971,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              // ── Auto total fee ──
                               Text(
                                 'Fee: Rs. ${totalFee.toStringAsFixed(0)}',
                                 style: const TextStyle(
@@ -889,7 +1163,7 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '$_genSaved challan(s) saved to student accounts via Cloudinary.',
+                    '$_genSaved challan(s) saved — each to its own student, via Cloudinary.',
                     style: const TextStyle(
                       fontSize: 12,
                       color: _navy,
@@ -1366,7 +1640,7 @@ class _SaveResultsDialog extends StatelessWidget {
                         ),
                         const SizedBox(width: 2),
                         Text(
-                          r.success ? 'Saved to account' : 'Upload failed',
+                          r.success ? 'Saved' : 'Upload failed',
                           style: TextStyle(
                             fontSize: 10,
                             color: r.success ? _green : _red,

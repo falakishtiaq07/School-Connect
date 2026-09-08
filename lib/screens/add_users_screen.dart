@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:school_connect/service/email_verification_service.dart';
 
 class AddUserScreen extends StatefulWidget {
   const AddUserScreen({super.key});
@@ -13,18 +12,21 @@ class AddUserScreen extends StatefulWidget {
 
 class _AddUserScreenState extends State<AddUserScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final _nameController = TextEditingController();
+  final _fatherNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _rollNoController = TextEditingController();
+  final _classController = TextEditingController();
+
   final RegExp _emailRx = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-  String? _selectedClass;
+
   String? _selectedRole;
 
   @override
   void initState() {
     super.initState();
-    // Name change hone par auto-generate password logic
     _nameController.addListener(_generatePassword);
   }
 
@@ -32,23 +34,34 @@ class _AddUserScreenState extends State<AddUserScreen> {
     final fullName = _nameController.text.trim();
 
     if (fullName.isEmpty) {
-      setState(() {
-        _passwordController.text = '';
-      });
+      if (mounted) {
+        setState(() {
+          _passwordController.text = '';
+        });
+      }
       return;
     }
 
     // Sirf first name lo
     final firstName = fullName.split(' ').first.toLowerCase();
 
-    setState(() {
-      _passwordController.text = '$firstName@123';
-    });
+    if (mounted) {
+      setState(() {
+        _passwordController.text = '$firstName@123';
+      });
+    }
+  }
+
+  String _formatClassSection(String input) {
+    String cleaned = input.trim().toUpperCase();
+    // Space, underscore, ya multiple hyphens ko single hyphen '-' mein badal dega
+    cleaned = cleaned.replaceAll(RegExp(r'[\s_]+'), '-');
+    return cleaned;
   }
 
   Future<bool> checkRollNoExists(String rollNo) async {
-    var snapshot = await FirebaseFirestore.instance
-        .collection('users') // Ya jahan aapne students ka data rakha hai
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
         .where('role', isEqualTo: 'Student')
         .where('rollNo', isEqualTo: rollNo)
         .get();
@@ -66,15 +79,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
     return snapshot.docs.isNotEmpty;
   }
 
-  // ------------------------------------------------------------------
-  // FIX: create the new user through a SECONDARY, temporary Firebase
-  // App instance. FirebaseAuth.instanceFor(app: tempApp) has its own
-  // isolated auth session, completely separate from the default app's
-  // FirebaseAuth.instance — so the Admin's login (on the default app)
-  // is never touched, replaced, or logged out. Once the new user is
-  // created we immediately sign that temp session out and delete the
-  // temp app, releasing its resources.
-  // ------------------------------------------------------------------
   Future<UserCredential> _createUserWithoutSigningInAdminOut({
     required String email,
     required String password,
@@ -82,8 +86,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
     final String tempAppName =
         'createUserTemp_${DateTime.now().millisecondsSinceEpoch}';
 
-    // Reuse the same project config (google-services.json /
-    // GoogleService-Info.plist / firebase_options.dart) as the main app.
     final FirebaseApp tempApp = await Firebase.initializeApp(
       name: tempAppName,
       options: Firebase.app().options,
@@ -94,16 +96,15 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
       final UserCredential credential = await tempAuth
           .createUserWithEmailAndPassword(email: email, password: password);
+
       await credential.user!.sendEmailVerification();
 
       debugPrint("Verification email sent to: $email");
 
-      // Sign out of the temporary session (not the Admin's session).
       await tempAuth.signOut();
 
       return credential;
     } finally {
-      // Always clean up the temporary app, even if creation throws.
       await tempApp.delete();
     }
   }
@@ -111,10 +112,14 @@ class _AddUserScreenState extends State<AddUserScreen> {
   @override
   void dispose() {
     _nameController.removeListener(_generatePassword);
+
     _nameController.dispose();
+    _fatherNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _rollNoController.dispose();
+    _classController.dispose();
+
     super.dispose();
   }
 
@@ -122,6 +127,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
@@ -131,10 +137,11 @@ class _AddUserScreenState extends State<AddUserScreen> {
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
         ),
       ),
+
       body: Center(
         child: SingleChildScrollView(
           child: Container(
-            padding: const EdgeInsets.all(20), // Padding yahan aayegi
+            padding: const EdgeInsets.all(20),
             width: double.infinity,
             constraints: const BoxConstraints(maxWidth: 500),
             child: Card(
@@ -153,24 +160,36 @@ class _AddUserScreenState extends State<AddUserScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+
                       const SizedBox(height: 20),
 
-                      // Name Field
+                      // =========================
+                      // NAME
+                      // =========================
                       TextFormField(
                         controller: _nameController,
                         decoration: const InputDecoration(
-                          labelText: "Full Name",
+                          labelText: "Full Name *",
                           border: OutlineInputBorder(),
                         ),
-                        validator: (v) => v!.isEmpty ? "Required" : null,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "Full Name is required";
+                          }
+                          return null;
+                        },
                       ),
+
                       const SizedBox(height: 15),
 
-                      // Email Field
+                      // =========================
+                      // EMAIL
+                      // =========================
                       TextFormField(
                         controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: "Email",
+                          labelText: "Email *",
                           border: OutlineInputBorder(),
                           hintText: "example@gmail.com",
                         ),
@@ -188,9 +207,12 @@ class _AddUserScreenState extends State<AddUserScreen> {
                           return null;
                         },
                       ),
+
                       const SizedBox(height: 15),
 
-                      // Auto Password Field
+                      // =========================
+                      // GENERATED PASSWORD
+                      // =========================
                       TextFormField(
                         controller: _passwordController,
                         readOnly: true,
@@ -202,13 +224,16 @@ class _AddUserScreenState extends State<AddUserScreen> {
                           fillColor: Color(0xFFF0F0F0),
                         ),
                       ),
+
                       const SizedBox(height: 25),
 
-                      // Role Dropdown
+                      // =========================
+                      // ROLE
+                      // =========================
                       DropdownButtonFormField<String>(
                         initialValue: _selectedRole,
                         decoration: const InputDecoration(
-                          labelText: "Select Role",
+                          labelText: "Select Role *",
                           border: OutlineInputBorder(),
                         ),
                         items: ["Student", "Teacher"]
@@ -216,107 +241,141 @@ class _AddUserScreenState extends State<AddUserScreen> {
                               (r) => DropdownMenuItem(value: r, child: Text(r)),
                             )
                             .toList(),
-                        onChanged: (v) => setState(() => _selectedRole = v),
-                        validator: (v) =>
-                            v == null ? "Please select a role" : null,
+                        onChanged: (v) {
+                          setState(() {
+                            _selectedRole = v;
+
+                            // Agar Teacher select ho,
+                            // Student-specific fields clear kar dein.
+                            if (v != "Student") {
+                              _rollNoController.clear();
+                              _fatherNameController.clear();
+                            }
+                          });
+                        },
+                        validator: (v) {
+                          if (v == null) {
+                            return "Please select a role";
+                          }
+                          return null;
+                        },
                       ),
 
                       const SizedBox(height: 15),
+
+                      // =========================
+                      // STUDENT FIELDS
+                      // =========================
                       if (_selectedRole == "Student") ...[
+                        // ROLL NUMBER
                         TextFormField(
                           controller: _rollNoController,
+                          keyboardType: TextInputType.text,
                           decoration: const InputDecoration(
                             labelText: "Roll Number *",
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) {
-                            if (value == null || value.isEmpty) {
+                            if (value == null || value.trim().isEmpty) {
                               return "Roll Number is required";
                             }
                             return null;
                           },
                         ),
+
+                        const SizedBox(height: 15),
+
+                        // FATHER NAME
+                        TextFormField(
+                          controller: _fatherNameController,
+                          keyboardType: TextInputType.name,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: "Father Name *",
+                            border: OutlineInputBorder(),
+                            hintText: "Enter father's name",
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return "Father Name is required";
+                            }
+                            return null;
+                          },
+                        ),
+
                         const SizedBox(height: 15),
                       ],
 
-                      // Class Dropdown
-                      DropdownButtonFormField<String>(
-                        initialValue: _selectedClass,
+                      // =========================
+                      // CLASS
+                      // =========================
+                      TextFormField(
+                        controller: _classController,
                         decoration: const InputDecoration(
-                          labelText: "Select Class",
+                          labelText: "Class / Section *",
+                          hintText: "e.g. 1-A, 5-B",
                           border: OutlineInputBorder(),
                         ),
-                        items: List.generate(10, (i) => (i + 1).toString())
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text("Class $c"),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => _selectedClass = v),
-                        validator: (v) => v == null || v.isEmpty
-                            ? "Please select a class"
-                            : null,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "Class is required";
+                          }
+                          return null;
+                        },
                       ),
+
                       const SizedBox(height: 25),
 
-                      // Buttons Row
+                      // =========================
+                      // BUTTONS
+                      // =========================
                       Row(
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
+                              onPressed: () {
+                                Navigator.pop(context);
+                              },
                               child: const Text("Cancel"),
                             ),
                           ),
+
                           const SizedBox(width: 15),
+
                           Expanded(
                             child: FilledButton(
                               onPressed: () async {
-                                if (_formKey.currentState!.validate()) {
-                                  showDialog(
-                                    context: context,
-                                    barrierDismissible: false,
-                                    builder: (context) => const Center(
+                                // =========================
+                                // FORM VALIDATION
+                                // =========================
+                                if (!_formKey.currentState!.validate()) {
+                                  return;
+                                }
+
+                                // =========================
+                                // FIRST LOADING
+                                // =========================
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (context) {
+                                    return const Center(
                                       child: CircularProgressIndicator(),
-                                    ),
-                                  );
-                                  print("🔥 EMAIL VALIDATION STARTED");
-                                  print(
-                                    "🔥 EMAIL: ${_emailController.text.trim()}",
-                                  );
+                                    );
+                                  },
+                                );
 
-                                  bool isRealEmail =
-                                      await EmailVerificationService.isEmailValid(
-                                        _emailController.text.trim(),
-                                      );
-                                  print(
-                                    "🔥 EMAIL VALIDATION RESULT: $isRealEmail",
-                                  );
-                                  if (!isRealEmail) {
-                                    if (mounted) {
-                                      Navigator.pop(
-                                        context,
-                                      ); // loading dialog band karein
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            "Email does not exist. Please enter a valid email.",
-                                          ),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                    return;
-                                  }
-
-                                  if (mounted) Navigator.pop(context);
-                                  bool emailExists = await checkEmailExists(
+                                try {
+                                  // =========================
+                                  // CHECK EMAIL
+                                  // =========================
+                                  final emailExists = await checkEmailExists(
                                     _emailController.text.trim(),
                                   );
+
+                                  if (!mounted) return;
+
+                                  Navigator.pop(context);
 
                                   if (emailExists) {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -329,11 +388,18 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                     );
                                     return;
                                   }
+
+                                  // =========================
+                                  // CHECK ROLL NUMBER
+                                  // =========================
                                   if (_selectedRole == "Student") {
-                                    bool exists = await checkRollNoExists(
+                                    final rollExists = await checkRollNoExists(
                                       _rollNoController.text.trim(),
                                     );
-                                    if (exists) {
+
+                                    if (!mounted) return;
+
+                                    if (rollExists) {
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
@@ -347,94 +413,112 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                       return;
                                     }
                                   }
+
+                                  // =========================
+                                  // SECOND LOADING
+                                  // =========================
                                   showDialog(
                                     context: context,
                                     barrierDismissible: false,
-                                    builder: (context) => const Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
+                                    builder: (context) {
+                                      return const Center(
+                                        child: CircularProgressIndicator(),
+                                      );
+                                    },
                                   );
 
-                                  try {
-                                    // FIX: use the secondary-app helper
-                                    // instead of
-                                    // FirebaseAuth.instance.createUserWithEmailAndPassword(),
-                                    // so the Admin stays signed in.
-                                    UserCredential userCredential =
-                                        await _createUserWithoutSigningInAdminOut(
-                                          email: _emailController.text.trim(),
-                                          password: _passwordController.text
-                                              .trim(),
-                                        );
-                                    final Map<String, dynamic> userData = {
-                                      "uid": userCredential.user!.uid,
-                                      "name": _nameController.text.trim(),
-                                      "email": _emailController.text.trim(),
-                                      "role": _selectedRole,
-                                      "class": _selectedClass ?? "N/A",
-                                      "password": _passwordController.text
-                                          .trim(),
-                                      "isPasswordChanged": false,
-                                      "emailVerified": false,
-                                      "createdAt": FieldValue.serverTimestamp(),
-                                    };
-
-                                    // Sirf Student ke liye rollNo save hoga
-                                    if (_selectedRole == "Student") {
-                                      userData["rollNo"] = _rollNoController
-                                          .text
-                                          .trim();
-                                    }
-
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(userCredential.user!.uid)
-                                        .set(userData);
-
-                                    if (mounted) {
-                                      Navigator.pop(context);
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            "User created! Verification email has been sent. User must verify the email before logging in.",
-                                          ),
-                                        ),
+                                  // =========================
+                                  // CREATE AUTH USER
+                                  // =========================
+                                  final UserCredential userCredential =
+                                      await _createUserWithoutSigningInAdminOut(
+                                        email: _emailController.text.trim(),
+                                        password: _passwordController.text
+                                            .trim(),
                                       );
-                                    }
-                                  } on FirebaseAuthException catch (e) {
-                                    String errorMessage =
-                                        e.message ?? "Error occurred";
-                                    if (e.code == 'email-already-in-use') {
-                                      errorMessage = "Email Already in Use.";
-                                    }
 
-                                    if (mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(errorMessage),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text("Error: $e"),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
+                                  // =========================
+                                  // USER DATA
+                                  // =========================
+                                  final Map<String, dynamic> userData = {
+                                    "uid": userCredential.user!.uid,
+                                    "name": _nameController.text.trim(),
+                                    "email": _emailController.text.trim(),
+                                    "role": _selectedRole,
+                                    "class": _formatClassSection(
+                                      _classController.text,
+                                    ),
+                                    "password": _passwordController.text.trim(),
+                                    "isPasswordChanged": false,
+                                    "emailVerified": false,
+                                    "createdAt": FieldValue.serverTimestamp(),
+                                  };
+
+                                  // =========================
+                                  // STUDENT DATA
+                                  // =========================
+                                  if (_selectedRole == "Student") {
+                                    userData["rollNo"] = _rollNoController.text
+                                        .trim();
+
+                                    // IMPORTANT:
+                                    // Ye EXACT field name
+                                    // student_profile mein bhi use hoga.
+                                    userData["father_name"] =
+                                        _fatherNameController.text.trim();
                                   }
+
+                                  // =========================
+                                  // SAVE USER
+                                  // =========================
+                                  await FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(userCredential.user!.uid)
+                                      .set(userData);
+
+                                  if (!mounted) return;
+
+                                  Navigator.pop(context);
+                                  Navigator.pop(context);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "User created! Verification email has been sent. User must verify the email before logging in.",
+                                      ),
+                                    ),
+                                  );
+                                } on FirebaseAuthException catch (e) {
+                                  if (!mounted) return;
+
+                                  // Loading dialog close
+                                  Navigator.pop(context);
+
+                                  String errorMessage =
+                                      e.message ?? "Error occurred";
+
+                                  if (e.code == 'email-already-in-use') {
+                                    errorMessage = "Email Already in Use.";
+                                  }
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(errorMessage),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!mounted) return;
+
+                                  // Loading dialog close
+                                  Navigator.pop(context);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Error: $e"),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
                                 }
                               },
                               child: const Text("Create User"),

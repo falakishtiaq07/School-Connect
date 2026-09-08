@@ -2,9 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:school_connect/auth/forgot_password_screen.dart';
 import 'package:school_connect/screens/admin_dashboard_screen.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:school_connect/service/one_signal_service.dart';
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
@@ -96,7 +95,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                               : Icons.visibility_outlined,
                         ),
                         onPressed: () {
-                          // Isse click karne par password hide/show hoga aur screen refresh hogi
                           setState(() {
                             _isPasswordHidden = !_isPasswordHidden;
                           });
@@ -186,20 +184,16 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                                 .get();
 
                             if (userDoc.exists) {
-                              // Firestore se role uthayein (Ensure karein aapke DB mein field ka naam 'role' hi ho)
                               String userRole = userDoc
                                   .get('role')
                                   .toString()
                                   .toLowerCase();
 
                               if (userRole == 'admin') {
-                                if (!kIsWeb) {
-                                  await OneSignal.login(uid);
-                                  await OneSignal.User.addTagWithKey(
-                                    "role",
-                                    userRole,
-                                  );
-                                }
+                                await OneSignalService.setupOneSignal(
+                                  uid,
+                                  userRole,
+                                );
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(

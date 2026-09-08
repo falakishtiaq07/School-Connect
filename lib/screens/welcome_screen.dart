@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import 'admin_login_screen.dart';
-import 'user_login_screen.dart';
+
+import 'login_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -92,45 +92,18 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 35), // Buttons ke liye gap
-                  // ================= TITLE =================
-                  /*const Text(
-                    'SCHOOLCONNECT',
-
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: primaryBlue,
-                      letterSpacing: 1,
-                    ),
-                  ),
-
-                  const SizedBox(height: 15),*/
-
-                  // ================= SCHOOL IMAGE =================
-                  /*Image.asset(
-                    'assets/school.png',
-
-                    width: double.infinity,
-                    height: 320,
-                    fit: BoxFit.cover,
-                  ),
-
-                  const SizedBox(height: 15),*/
-
+                  const SizedBox(height: 35),
                   // ================= ADMIN LOGIN BUTTON =================
                   InkWell(
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const AdminLoginScreen(),
+                          builder: (context) => const UserLoginScreen(),
                         ),
                       );
                     },
-                    borderRadius: BorderRadius.circular(
-                      40,
-                    ), // Taake click ka wave effect bhi rounded ho
+                    borderRadius: BorderRadius.circular(40),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Container(
@@ -141,9 +114,7 @@ class WelcomeScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(40),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(
-                                alpha: 0.18,
-                              ), // Naya standard format error nahi dega
+                              color: Colors.black.withValues(alpha: 0.18),
                               blurRadius: 8,
                               offset: const Offset(0, 4),
                             ),
@@ -152,34 +123,21 @@ class WelcomeScreen extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 25),
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Icon(
-                                Icons.key,
+                                Icons.login_rounded,
                                 color: Colors.white,
-                                size: 38,
-                              ), // Icon par const laga diya
-                              const SizedBox(width: 18),
-                              Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // --- Yahan FittedBox add kiya hai jo user login button ki tarah text ko responsive banayega ---
-                                    FittedBox(
-                                      fit: BoxFit
-                                          .scaleDown, // Text bada hone par size automatic chota karega
-                                      alignment: Alignment
-                                          .centerLeft, // Text ko left side par align rakhega
-                                      child: const Text(
-                                        'LOGIN AS ADMIN',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                size: 22,
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Log In',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3,
                                 ),
                               ),
                             ],
@@ -188,112 +146,8 @@ class WelcomeScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 25),
 
-                  // ================= USER LOGIN BUTTON =================
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const UserLoginScreen(),
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(
-                      40,
-                    ), // Click effect ko rounded rakhne ke liye
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 28),
-                      child: Container(
-                        height: 75,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: lightGreen,
-                          borderRadius: BorderRadius.circular(40),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 25),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.edit,
-                                color: Colors.black,
-                                size: 36,
-                              ),
-                              const SizedBox(width: 18),
-                              Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // --- Yahan FittedBox add kiya hai jo screen ke mutabiq text adjust karega ---
-                                    FittedBox(
-                                      fit: BoxFit
-                                          .scaleDown, // Text bada hone par size automatic chota karega
-                                      alignment: Alignment
-                                          .centerLeft, // Text ko left side par align rakhega
-                                      child: const Text(
-                                        'LOGIN AS USER',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    /*Row(
-                    children: [
-                      Text(
-                        'Send',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 16,
-                        ),
-                      ),
-                      SizedBox(width: 4),
-                      Icon(
-                        Icons.arrow_forward,
-                        color: Colors.black,
-                        size: 20,
-                      ),
-                    ],
-                  ),*/
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // ================= INFO TEXT =================
-                  /*const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-
-                    child: Text(
-                      'Admin, Teacher, or Student? Log in or request an account to get started.',
-
-                      textAlign: TextAlign.center,
-
-                      style: TextStyle(
-                        fontSize: 17,
-                        color: Colors.black87,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),*/
-                  const SizedBox(height: 40),
-
+                  const SizedBox(height: 35),
                   // ================= FOOTER =================
                   Container(
                     width: double.infinity,
@@ -304,7 +158,7 @@ class WelcomeScreen extends StatelessWidget {
                         'Connecting Education, Building Futures',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 18,
                           color: Colors.black87,
                           fontWeight: FontWeight.w400,
                         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:school_connect/service/notification_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ManageLeavePage extends StatefulWidget {
@@ -715,6 +716,8 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
         .toString()
         .isNotEmpty;
 
+    final bool isNew = data['teacherRead'] != true;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       margin: const EdgeInsets.only(bottom: 12),
@@ -739,12 +742,22 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
+          onTap: () async {
             if (_isSelectionMode) {
               setState(() {
                 isSelected ? _selectedDocs.remove(id) : _selectedDocs.add(id);
               });
             } else {
+              // Mark this leave as read when teacher opens it
+              if (data['teacherRead'] != true) {
+                await FirebaseFirestore.instance
+                    .collection('leave_requests')
+                    .doc(id)
+                    .update({'teacherRead': true});
+              }
+
+              if (!mounted) return;
+
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -803,20 +816,41 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
                             child: Wrap(
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                Text(
-                                  "${data['studentName']} ",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                    color: navy,
-                                  ),
-                                ),
-                                Text(
-                                  "(Roll: ${data['rollNo']})",
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    color: Colors.grey.shade600,
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        "${data['studentName']} ",
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                          color: navy,
+                                        ),
+                                      ),
+                                    ),
+
+                                    // 🔴 New leave indicator
+                                    if (isNew)
+                                      Container(
+                                        width: 9,
+                                        height: 9,
+                                        margin: const EdgeInsets.only(right: 5),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+
+                                    Text(
+                                      "(Roll: ${data['rollNo']})",
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -967,11 +1001,60 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
     );
   }
 
-  Future<void> _updateStatus(String id, String status) => FirebaseFirestore
-      .instance
-      .collection('leave_requests')
-      .doc(id)
-      .update({'status': status});
+  Future<void> _updateStatus(String id, String status) async {
+    try {
+      // 1. Pehle leave request ka document fetch karein taake student ki ID (studentUid/userId) mil sakay
+      DocumentSnapshot docSnapshot = await FirebaseFirestore.instance
+          .collection('leave_requests')
+          .doc(id)
+          .get();
+
+      if (!docSnapshot.exists) return;
+      final data = docSnapshot.data() as Map<String, dynamic>;
+
+      // Firestore mein student ki ID kis field mein save hai, uske mutabiq yahan check ho raha hai
+      String targetUserId =
+          data['studentUid'] ?? data['userId'] ?? data['uid'] ?? '';
+
+      // 2. Firestore mein status update karein
+      await FirebaseFirestore.instance
+          .collection('leave_requests')
+          .doc(id)
+          .update({'status': status});
+
+      // 3. Student ko Push Notification bhejein
+      try {
+        String title = 'Leave Request Update';
+        String body = 'Your leave request status has been updated to $status.';
+
+        if (status.toLowerCase() == 'approved') {
+          title = 'Leave Approved ✅';
+          body = 'Good news! Your leave request has been approved.';
+        } else if (status.toLowerCase() == 'rejected') {
+          title = 'Leave Rejected ❌';
+          body = 'Your leave request has been rejected.';
+        }
+
+        if (targetUserId.isNotEmpty) {
+          await NotificationService.sendPushToUser(
+            targetUserId: targetUserId,
+            title: title,
+            body: body,
+            notificationType:
+                'leave_update', // Notification click par handle karne ke liye
+            relatedId: id,
+          );
+        }
+      } catch (notificationError) {
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+        // Notification fail hone par bhi status update nahi rukega
+      }
+
+      // Success feedback agar zaroorat ho (Optional)
+    } catch (e) {
+      debugPrint('Error updating leave status: $e');
+    }
+  }
 }
 
 class LeaveDetailPage extends StatelessWidget {

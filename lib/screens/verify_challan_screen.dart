@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:school_connect/service/notification_service.dart';
 
 const Color kNavy = Color(0xFF1E3A5F);
 const Color kAccentBlue = Color(0xFF2E86AB);
@@ -14,9 +16,11 @@ const List<String> _kStatuses = ['Pending', 'Paid', 'Rejected'];
 // LEVEL 1 — ALL CLASSES
 // =========================================================================
 
-/// Entry point: "Verify Challan". Shows all classes, fetched dynamically
-/// from `student_profile`, each with a receipt-relevant count. Does NOT
-/// touch the student-side upload logic or existing challan collections.
+/// Entry point: "Verify Challan". Shows all classes that currently have at
+/// least one Student in the `users` collection — this is the single source
+/// of truth used everywhere else in the app (Manage Users, Promote,
+/// Generate Challan). If every student in a class is removed from `users`,
+/// that class automatically disappears from this list.
 class AdminVerifyChallanScreen extends StatefulWidget {
   const AdminVerifyChallanScreen({super.key});
 
@@ -34,30 +38,60 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
     _classesFuture = _loadClasses();
   }
 
-  /// Reads distinct `grade` values from `student_profile` and counts
-  /// students per class. Client-side grouping keeps this working without
-  /// needing a separate `classes` collection.
+  /// Reads distinct `class` values from `users` (role == Student only) and
+  /// counts students per class. Client-side grouping keeps this working
+  /// without needing a separate `classes` collection.
   Future<List<_ClassSummary>> _loadClasses() async {
-    final snap = await FirebaseFirestore.instance.collection('users').get();
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'Student')
+        .get();
 
     final Map<String, int> counts = {};
+    final Map<String, List<String>> classToUids = {};
 
     for (final doc in snap.docs) {
       final data = doc.data();
-
       final className = data['class']?.toString().trim();
+      final uid = data['uid']?.toString() ?? doc.id;
 
       if (className == null || className.isEmpty) continue;
 
       counts[className] = (counts[className] ?? 0) + 1;
+      classToUids.putIfAbsent(className, () => []).add(uid);
     }
 
-    final list = counts.entries
-        .map((e) => _ClassSummary(className: e.key, studentCount: e.value))
-        .toList();
+    // Sabhi unread pending receipts la kar check karein ke kis class mein hain
+    final receiptsSnap = await FirebaseFirestore.instance
+        .collection('fee_receipts')
+        .where('status', isEqualTo: 'Pending')
+        .get();
 
-    // Sort numerically where possible ("9", "10", "11" ...), fall back to
-    // string sort for non-numeric class labels.
+    final unreadUids = <String>{};
+    for (final doc in receiptsSnap.docs) {
+      final data = doc.data();
+      if (data['adminRead'] != true) {
+        final studentId = data['studentId']?.toString();
+        if (studentId != null) {
+          unreadUids.add(studentId);
+        }
+      }
+    }
+
+    final list = counts.entries.map((e) {
+      final className = e.key;
+      final uidsInClass = classToUids[className] ?? [];
+
+      // Check karein ke kya is class ke kisi student ki unread receipt hai
+      final hasUnread = uidsInClass.any((uid) => unreadUids.contains(uid));
+
+      return _ClassSummary(
+        className: className,
+        studentCount: e.value,
+        hasUnread: hasUnread,
+      );
+    }).toList();
+
     list.sort((a, b) {
       final an = int.tryParse(a.className);
       final bn = int.tryParse(b.className);
@@ -95,7 +129,10 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
             );
           }
           if (snapshot.hasError) {
-            return _errorState('Could not load classes.', _refresh);
+            return _errorState(
+              'Could not load classes: ${snapshot.error}',
+              _refresh,
+            );
           }
           final classes = snapshot.data ?? [];
           if (classes.isEmpty) {
@@ -137,13 +174,15 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
         elevation: 0,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.of(context).push(
+          onTap: () async {
+            await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) =>
                     ClassReceiptsScreen(className: summary.className),
               ),
             );
+            // Jab wapas aayein toh classes list refresh hojaye taake red dot hat jaye
+            setState(() {});
           },
           child: Container(
             padding: const EdgeInsets.all(16),
@@ -159,13 +198,32 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
             ),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: kAccentBlue.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.school, color: kAccentBlue),
+                // 🔴 Stack laga kar Icon par Red Dot lagaya hai
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: kAccentBlue.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.school, color: kAccentBlue),
+                    ),
+                    if (summary.hasUnread)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -203,26 +261,36 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
 class _ClassSummary {
   final String className;
   final int studentCount;
-  _ClassSummary({required this.className, required this.studentCount});
+  final bool hasUnread;
+  _ClassSummary({
+    required this.className,
+    required this.studentCount,
+    required this.hasUnread,
+  });
 }
 
 // =========================================================================
 // LEVEL 2 — RECEIPTS FOR THE SELECTED CLASS
 // =========================================================================
 
-/// Combines a `fee_receipts` document with the matching `student_profile`
-/// record so the card can show name/roll/class without changing either
-/// collection's schema.
+/// Combines a `fee_receipts` document with the matching `users` record
+/// (looked up by uid, i.e. `studentId`) so the card can show name/roll/
+/// class without depending on any separate profile collection staying in
+/// sync.
 class _ReceiptItem {
   final String docId;
   final Map<String, dynamic> receipt;
   final Map<String, dynamic>? student;
+  bool get hasUnread =>
+      status.toLowerCase() == 'pending' && receipt['adminRead'] != true;
 
   _ReceiptItem({required this.docId, required this.receipt, this.student});
 
-  String get studentName => student?['student_name']?.toString() ?? 'Unknown';
+  String get studentUid => (receipt['studentId'] ?? '').toString();
+  String get studentName => (student?['name'] ?? 'Unknown').toString();
   String get rollNo =>
-      receipt['roll_no']?.toString() ?? student?['roll_no']?.toString() ?? '—';
+      (student?['rollNo'] ?? receipt['roll_no'] ?? '—').toString();
+  String get studentClass => (student?['class'] ?? '—').toString();
   String get status => (receipt['status'] ?? 'Pending').toString();
   String? get challanId => receipt['challanId']?.toString();
   String? get receiptUrl => receipt['receiptImageUrl']?.toString();
@@ -246,8 +314,7 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
   bool _loadingRoster = true;
   String? _rosterError;
 
-  Map<String, Map<String, dynamic>> _rosterByRollNo =
-      {}; // roll_no -> student data
+  Map<String, Map<String, dynamic>> _rosterByUid = {}; // uid -> student data
   final Map<String, _ReceiptItem> _receiptsById = {}; // merged, live-updating
 
   final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
@@ -269,52 +336,63 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
   }
 
   Future<void> _init() async {
+    // Cancel any subscriptions from a previous attempt (e.g. the user
+    // tapped "Retry" after an error) so they don't leak/duplicate.
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
+    _receiptsById.clear();
+
     setState(() {
       _loadingRoster = true;
       _rosterError = null;
     });
 
     try {
+      // Single source of truth: `users` collection. If a student is
+      // removed from here, they automatically disappear from this roster
+      // too — no separate profile collection to keep in sync.
       final rosterSnap = await FirebaseFirestore.instance
-          .collection('student_profile')
-          .where('grade', isEqualTo: widget.className)
+          .collection('users')
+          .where('role', isEqualTo: 'Student')
+          .where('class', isEqualTo: widget.className)
           .get();
 
-      _rosterByRollNo = {
+      _rosterByUid = {
         for (final doc in rosterSnap.docs)
-          if (doc.data()['roll_no'] != null)
-            doc.data()['roll_no'].toString(): doc.data(),
+          (doc.data()['uid'] ?? doc.id).toString(): doc.data(),
       };
 
-      final rollNumbers = _rosterByRollNo.keys.toList();
+      final uids = _rosterByUid.keys.where((id) => id.isNotEmpty).toList();
 
-      setState(() => _loadingRoster = false);
+      if (mounted) setState(() => _loadingRoster = false);
 
-      if (rollNumbers.isEmpty) return; // empty state handles this
+      if (uids.isEmpty) return; // empty state handles this
 
       // Firestore `whereIn` supports up to 30 values — chunk the roster
       // and merge the resulting streams so this still works for large
-      // classes.
+      // classes. Matching by uid (not roll_no) avoids any field-name or
+      // formatting mismatch between collections.
       const chunkSize = 30;
-      for (var i = 0; i < rollNumbers.length; i += chunkSize) {
-        final chunk = rollNumbers.sublist(
+      for (var i = 0; i < uids.length; i += chunkSize) {
+        final chunk = uids.sublist(
           i,
-          i + chunkSize > rollNumbers.length
-              ? rollNumbers.length
-              : i + chunkSize,
+          i + chunkSize > uids.length ? uids.length : i + chunkSize,
         );
 
         final sub = FirebaseFirestore.instance
             .collection('fee_receipts')
-            .where('roll_no', whereIn: chunk)
+            .where('studentId', whereIn: chunk)
             .snapshots()
             .listen(
               _onReceiptsSnapshot,
-              onError: (_) {
+              onError: (Object error) {
+                debugPrint('fee_receipts listener ERROR: $error');
                 if (mounted) {
                   setState(
                     () => _rosterError =
-                        'Could not load receipts for this class.',
+                        'Could not load receipts for this class: $error',
                   );
                 }
               },
@@ -322,17 +400,20 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
         _subscriptions.add(sub);
       }
     } catch (e) {
-      setState(() {
-        _loadingRoster = false;
-        _rosterError = 'Could not load the class roster.';
-      });
+      debugPrint('Class roster loading error: $e');
+      if (mounted) {
+        setState(() {
+          _loadingRoster = false;
+          _rosterError = 'Could not load the class roster: $e';
+        });
+      }
     }
   }
 
   void _onReceiptsSnapshot(QuerySnapshot<Map<String, dynamic>> snap) {
     for (final change in snap.docChanges) {
-      final rollNo = change.doc.data()?['roll_no']?.toString();
-      final student = rollNo != null ? _rosterByRollNo[rollNo] : null;
+      final uid = change.doc.data()?['studentId']?.toString();
+      final student = uid != null ? _rosterByUid[uid] : null;
 
       if (change.type == DocumentChangeType.removed) {
         _receiptsById.remove(change.doc.id);
@@ -412,7 +493,7 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
               children: [
                 _buildSearchBar(),
                 Expanded(
-                  child: _rosterByRollNo.isEmpty
+                  child: _rosterByUid.isEmpty
                       ? _emptyState(
                           icon: Icons.groups_outlined,
                           title: 'No Students Found',
@@ -672,19 +753,39 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
     super.dispose();
   }
 
+  /// Challans are generated into `student_challans` (see
+  /// GenerateChallanScreen), not the older `challans` collection this used
+  /// to point at. Tries the stored `challanId` first (when the upload flow
+  /// managed to attach one), then falls back to the student's most recent
+  /// challan by uid — so this card still shows something useful even when
+  /// the receipt's own `challanId` link is missing.
   Future<void> _loadChallan() async {
-    final challanId = widget.item.challanId;
-    if (challanId == null) {
-      setState(() => _loadingChallan = false);
-      return;
-    }
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('challans')
-          .doc(challanId)
-          .get();
-      if (doc.exists) _challanData = doc.data();
-    } catch (_) {
+      final challanId = widget.item.challanId;
+      DocumentSnapshot<Map<String, dynamic>>? doc;
+
+      if (challanId != null && challanId.isNotEmpty) {
+        final byId = await FirebaseFirestore.instance
+            .collection('student_challans')
+            .doc(challanId)
+            .get();
+        if (byId.exists) doc = byId;
+      }
+
+      final studentUid = widget.item.studentUid;
+      if (doc == null && studentUid.isNotEmpty) {
+        final snap = await FirebaseFirestore.instance
+            .collection('student_challans')
+            .where('studentId', isEqualTo: studentUid)
+            .orderBy('createdAt', descending: true)
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) doc = snap.docs.first;
+      }
+
+      if (doc != null && doc.exists) _challanData = doc.data();
+    } catch (e) {
+      debugPrint('Challan loading error: $e');
       // Non-fatal — challan info is supplementary here.
     } finally {
       if (mounted) setState(() => _loadingChallan = false);
@@ -694,6 +795,7 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
   Future<void> _updateStatus() async {
     setState(() => _saving = true);
     try {
+      // 1. Firestore mein receipt ka status update karein
       await FirebaseFirestore.instance
           .collection('fee_receipts')
           .doc(widget.item.docId)
@@ -701,6 +803,34 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
             'status': _selectedStatus,
             'adminRemarks': _remarksController.text.trim(),
           });
+
+      // 2. [NEW STEP] Student ko Push Notification bhejein
+      try {
+        String notificationTitle = 'Fee Receipt Update';
+        String notificationBody =
+            'Your fee receipt status has been updated to $_selectedStatus.';
+
+        if (_selectedStatus == 'Paid') {
+          notificationTitle = 'Fee Verified! 🎉';
+          notificationBody =
+              'Your fee payment has been successfully verified and accepted.';
+        } else if (_selectedStatus == 'Rejected') {
+          notificationTitle = 'Fee Receipt Rejected ';
+          notificationBody =
+              'Your fee receipt was rejected. Check remarks for details.';
+        }
+
+        await NotificationService.sendPushToUser(
+          targetUserId: widget.item.studentUid, // Student ki unique UID
+          title: notificationTitle,
+          body: notificationBody,
+          notificationType: 'receipt_update',
+          relatedId: widget.item.docId,
+        );
+      } catch (notificationError) {
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+        // Notification fail hone par bhi status update nahi rukega
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -714,8 +844,8 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not update the status. Please try again.'),
+        SnackBar(
+          content: Text('Could not update the status: $e'),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
@@ -778,11 +908,7 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
               children: [
                 _infoRow(Icons.person, 'Name', item.studentName),
                 _infoRow(Icons.badge, 'Roll Number', item.rollNo),
-                _infoRow(
-                  Icons.class_,
-                  'Class',
-                  item.student?['grade']?.toString() ?? '—',
-                ),
+                _infoRow(Icons.class_, 'Class', item.studentClass),
               ],
             ),
           ),
@@ -812,31 +938,26 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
                       _infoRow(
                         Icons.confirmation_number,
                         'Challan No',
-                        (_challanData?['challanNumber'] ??
-                                _challanData?['challan_number'] ??
-                                item.challanId ??
-                                '—')
+                        (_challanData?['challanNo'] ?? item.challanId ?? '—')
                             .toString(),
                       ),
-                      if (_challanData?['totalFee'] != null ||
-                          _challanData?['total_fee'] != null)
+                      if (_challanData?['totalAmount'] != null)
                         _infoRow(
                           Icons.payments,
                           'Amount',
-                          (_challanData?['totalFee'] ??
-                                  _challanData?['total_fee'])
-                              .toString(),
+                          'Rs. ${_challanData?['totalAmount']}',
                         ),
-                      if (_dueDateDisplay() != null)
-                        _infoRow(Icons.event, 'Due Date', _dueDateDisplay()!),
-                      if (_challanData?['feeMonth'] != null ||
-                          _challanData?['fee_month'] != null)
+                      if (_challanData?['dueDate'] != null)
+                        _infoRow(
+                          Icons.event,
+                          'Due Date',
+                          _challanData!['dueDate'].toString(),
+                        ),
+                      if (_challanData?['month'] != null)
                         _infoRow(
                           Icons.calendar_month,
                           'Fee Month',
-                          (_challanData?['feeMonth'] ??
-                                  _challanData?['fee_month'])
-                              .toString(),
+                          _challanData!['month'].toString(),
                         ),
                     ],
                   ),
@@ -955,13 +1076,6 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
         ],
       ),
     );
-  }
-
-  String? _dueDateDisplay() {
-    final raw = _challanData?['dueDate'] ?? _challanData?['due_date'];
-    if (raw is Timestamp) return DateFormat('d MMM yyyy').format(raw.toDate());
-    if (raw is String) return raw;
-    return null;
   }
 
   Widget _statusChip(String status) {

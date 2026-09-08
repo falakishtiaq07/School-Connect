@@ -6,22 +6,34 @@ class EmailVerificationService {
 
   static Future<bool> isEmailValid(String email) async {
     try {
-      final url = Uri.parse(
-        'https://api.zerobounce.net/v2/validate?api_key=$_apiKey&email=$email',
-      );
+      final uri = Uri.https('api.zerobounce.net', '/v2/validate', {
+        'api_key': _apiKey,
+        'email': email.trim(),
+      });
 
-      final response = await http.get(url);
+      final response = await http.get(uri);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final status = data['status'];
+      print('================================');
+      print('ZEROBOUNCE EMAIL CHECK');
+      print('EMAIL: $email');
+      print('STATUS CODE: ${response.statusCode}');
+      print('RESPONSE: ${response.body}');
+      print('================================');
 
-        // Agar email valid hai toh true return hoga
-        return status == 'valid';
+      if (response.statusCode != 200) {
+        print('ZeroBounce API request failed.');
+        return false;
       }
-      return false;
+
+      final data = jsonDecode(response.body);
+
+      final status = data['status']?.toString().toLowerCase();
+
+      print('ZEROBOUNCE STATUS: $status');
+
+      return status == 'valid';
     } catch (e) {
-      print("Email Verification Error: $e");
+      print('ZeroBounce Error: $e');
       return false;
     }
   }

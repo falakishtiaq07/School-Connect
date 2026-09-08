@@ -195,8 +195,7 @@ class _ViewChallanScreenState extends State<ViewChallanScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('challans')
-          .where('roll_no', isEqualTo: _myRollNo) // ← roll_no verified
-          .orderBy('created_at', descending: true)
+          .where('rollNo', isEqualTo: _myRollNo)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -326,15 +325,14 @@ class _ViewChallanScreenState extends State<ViewChallanScreen> {
   Widget _challanCard(BuildContext ctx, QueryDocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final month = data['month'] ?? '—';
-    final dueDate = data['due_date'] ?? '—';
+    final dueDate = data['dueDate'] ?? '—';
     final validTill = data['valid_till'] ?? '—';
-    final grade = data['grade'] ?? '—';
-    final pdfUrl = data['pdf_url'] ?? '';
+    final grade = data['classSection'] ?? '—';
+    final pdfUrl = data['pdfUrl'] ?? '';
     final status = data['status'] ?? 'unpaid';
     final schoolFee = (data['school_fee'] ?? 0).toDouble();
     final transportFee = (data['transport_fee'] ?? 0).toDouble();
-    final totalFee = (data['total_fee'] ?? 0).toDouble();
-
+    final totalFee = (data['totalAmount'] ?? 0).toDouble();
     final isPaid = status == 'paid';
     final statusColor = isPaid ? _green : Colors.orange;
     final statusLabel = isPaid ? 'Paid' : 'Unpaid';

@@ -16,13 +16,6 @@ const Color kNavy = Color(0xFF1E3A5F);
 const Color kAccentBlue = Color(0xFF2E86AB);
 const Color kBgLight = Color(0xFFF4F7FB);
 
-// -----------------------------------------------------------------------
-// CLOUDINARY CONFIG
-// -----------------------------------------------------------------------
-// Uses the same unsigned-upload pattern as the challan PDF uploads
-// (cloud name pulled from the existing `challans-pdf` preset setup).
-// Replace `kCloudinaryCloudName` with the project's actual cloud name if
-// it differs from the one used for challan PDFs.
 const String kCloudinaryCloudName = 'dkjsza6pw';
 const String kCloudinaryUploadPreset = 'fee-receipts';
 
@@ -149,11 +142,6 @@ class _StudentPaymentReceiptScreenState
       // ============================================================
       // 3. FIND STUDENT PROFILE
       // ============================================================
-      //
-      // student_profile may use roll_no.
-      // We DON'T make this query mandatory.
-      // If it doesn't exist, we can still use users data.
-      // ============================================================
 
       try {
         final studentSnap = await FirebaseFirestore.instance
@@ -212,7 +200,6 @@ class _StudentPaymentReceiptScreenState
               .get();
 
           if (challanSnap.docs.isNotEmpty) {
-            // Find latest challan locally.
             QueryDocumentSnapshot<Map<String, dynamic>> latestDoc =
                 challanSnap.docs.first;
 
@@ -345,13 +332,6 @@ class _StudentPaymentReceiptScreenState
     }
   }
 
-  /// Resolves the current student's `roll_no`.
-  ///
-  /// NOTE: wire this up to whatever mechanism the rest of the app already
-  /// uses to map a logged-in FirebaseAuth user to a `roll_no` (e.g. a
-  /// custom claim, a `uid` field on `student_profile`, or a stored
-  /// session value). This default assumes a `uid` field exists on the
-  /// `student_profile` document — adjust to match the real schema.
   Future<String?> _resolveCurrentRollNo() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -429,6 +409,23 @@ class _StudentPaymentReceiptScreenState
 
       final challanIdForSave =
           widget.challanId ?? _challanData?['challanId'] ?? _challanData?['id'];
+      final now = DateTime.now();
+      const List<String> months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      String currentMonthName = months[now.month - 1]; // e.g., "September"
+      String currentYear = now.year.toString();
 
       final data = {
         'studentId': FirebaseAuth.instance.currentUser?.uid,
@@ -436,19 +433,26 @@ class _StudentPaymentReceiptScreenState
         'challanId': challanIdForSave,
         'receiptImageUrl': secureUrl,
         'status': 'Pending',
+        'adminRead': false,
         'uploadedAt': FieldValue.serverTimestamp(),
+        'month': currentMonthName,
+        'year': currentYear,
       };
 
       DocumentReference receiptRef = await FirebaseFirestore.instance
           .collection('fee_receipts')
           .add(data);
-      await NotificationService.sendPushNotification(
-        targetRole: 'admin',
-        title: 'Payment Receipt Uploaded',
-        body: 'A student (Roll No: $_rollNo) has uploaded a fee receipt.',
-        notificationType: 'receipt',
-        relatedId: receiptRef.id,
-      );
+      try {
+        await NotificationService.sendPushToUser(
+          targetRole: 'admin',
+          title: 'Fee Receipt Uploaded',
+          body: 'A student (Roll No: $_rollNo) has uploaded a fee receipt.',
+          notificationType: 'receipt',
+          relatedId: receiptRef.id,
+        );
+      } catch (notificationError) {
+        debugPrint('NOTIFICATION ERROR: $notificationError');
+      }
       _showSnack('Receipt submitted successfully.');
       setState(() {
         _pickedImage = null;
@@ -857,9 +861,13 @@ class _StudentPaymentReceiptScreenState
   }
 
   bool _canUploadNow() {
+    if (_existingReceipt == null) return true;
+
     final status = _existingReceipt?['status'];
-    if (status == 'Paid') return false; // upload disabled once verified
-    return true; // no receipt, Pending, or Rejected all allow upload/re-upload
+
+    if (status == 'Paid') return false;
+
+    return true;
   }
 
   // ----- Existing receipt card -----

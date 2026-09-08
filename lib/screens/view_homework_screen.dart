@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class StudentHomeworkListScreen extends StatefulWidget {
   const StudentHomeworkListScreen({super.key});
@@ -14,6 +15,77 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
 
+  // ------------------------------------------------------------
+  // READ DIARY IDS
+  // ------------------------------------------------------------
+  Set<String> _readDiaryIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReadDiaries();
+  }
+
+  // ------------------------------------------------------------
+  // LOAD DIARIES ALREADY READ BY CURRENT STUDENT
+  // ------------------------------------------------------------
+  Future<void> _loadReadDiaries() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('diary_reads')
+          .where('studentId', isEqualTo: user.uid)
+          .get();
+
+      if (!mounted) return;
+
+      setState(() {
+        _readDiaryIds = snapshot.docs
+            .map((doc) => doc['diaryId'].toString())
+            .toSet();
+      });
+    } catch (e) {
+      debugPrint('Error loading read diaries: $e');
+    }
+  }
+
+  // ------------------------------------------------------------
+  // MARK DIARY AS READ
+  // ------------------------------------------------------------
+  Future<void> _markDiaryAsRead(String diaryId) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null || diaryId.isEmpty) return;
+
+    // Already read
+    if (_readDiaryIds.contains(diaryId)) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('diary_reads')
+          .doc('${user.uid}_$diaryId')
+          .set({
+            'studentId': user.uid,
+            'diaryId': diaryId,
+            'readAt': FieldValue.serverTimestamp(),
+          });
+
+      if (!mounted) return;
+
+      setState(() {
+        _readDiaryIds.add(diaryId);
+      });
+    } catch (e) {
+      debugPrint('Error marking diary as read: $e');
+    }
+  }
+
+  // ------------------------------------------------------------
+  // VIEW IMAGE
+  // ------------------------------------------------------------
   void _viewImage(BuildContext context, String imageUrl) {
     Navigator.push(
       context,
@@ -30,7 +102,16 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
               boundaryMargin: const EdgeInsets.all(20),
               minScale: 0.5,
               maxScale: 4,
-              child: Image.network(imageUrl),
+              child: Image.network(
+                imageUrl,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 60,
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -38,6 +119,9 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
     );
   }
 
+  // ------------------------------------------------------------
+  // SHOW DIARY DETAILS
+  // ------------------------------------------------------------
   void _showHomeworkDetails(BuildContext context, Map<String, dynamic> data) {
     Navigator.push(
       context,
@@ -45,23 +129,38 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
     );
   }
 
+  // ------------------------------------------------------------
+  // DISPOSE
+  // ------------------------------------------------------------
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+
       appBar: AppBar(
         elevation: 0,
         centerTitle: true,
         backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
+
         title: const Text(
-          "Homework",
+          "Class Diary",
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
+
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -72,8 +171,12 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
           ),
         ),
       ),
+
       body: Column(
         children: [
+          // ----------------------------------------------------
+          // SEARCH
+          // ----------------------------------------------------
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
             child: Container(
@@ -88,37 +191,54 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
                   ),
                 ],
               ),
+
               child: TextField(
                 controller: _searchController,
-                onChanged: (value) =>
-                    setState(() => _searchQuery = value.toLowerCase()),
+
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value.toLowerCase();
+                  });
+                },
+
                 decoration: InputDecoration(
-                  hintText: "Search by subject...",
+                  hintText: "Search diary...",
+
                   hintStyle: TextStyle(color: Colors.grey.shade500),
+
                   prefixIcon: const Icon(
                     Icons.search_rounded,
                     color: Color(0xFF1E3A5F),
                   ),
+
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.close),
                           onPressed: () {
                             _searchController.clear();
-                            setState(() => _searchQuery = "");
+
+                            setState(() {
+                              _searchQuery = "";
+                            });
                           },
                         )
                       : null,
+
                   filled: true,
                   fillColor: Colors.white,
+
                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
+
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide.none,
                   ),
+
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide.none,
                   ),
+
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(
@@ -130,40 +250,68 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
               ),
             ),
           ),
+
+          // ----------------------------------------------------
+          // DIARY LIST
+          // ----------------------------------------------------
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('homework')
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
+
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("No homework available."));
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      "Something went wrong.\n${snapshot.error}",
+                      textAlign: TextAlign.center,
+                    ),
+                  );
                 }
 
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(child: Text("No diary available."));
+                }
+
+                // ------------------------------------------------
+                // FILTER
+                // ------------------------------------------------
                 var filteredDocs = snapshot.data!.docs.where((doc) {
                   var data = doc.data() as Map<String, dynamic>;
-                  return (data['subject'] ?? "")
+
+                  final title = (data['title'] ?? "").toString().toLowerCase();
+
+                  final description = (data['description'] ?? "")
                       .toString()
-                      .toLowerCase()
-                      .contains(_searchQuery);
+                      .toLowerCase();
+
+                  return title.contains(_searchQuery) ||
+                      description.contains(_searchQuery);
                 }).toList();
 
                 if (filteredDocs.isEmpty) {
-                  return const Center(
-                    child: Text("No homework found for this subject."),
-                  );
+                  return const Center(child: Text("No diary found."));
                 }
 
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
+
                   itemCount: filteredDocs.length,
+
                   itemBuilder: (context, index) {
-                    var data =
-                        filteredDocs[index].data() as Map<String, dynamic>;
+                    final doc = filteredDocs[index];
+
+                    var data = doc.data() as Map<String, dynamic>;
+
+                    // Firestore document ID internally add
+                    data['id'] = doc.id;
+
                     return _buildHomeworkCard(context, data);
                   },
                 );
@@ -175,17 +323,28 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
     );
   }
 
+  // ------------------------------------------------------------
+  // DIARY CARD
+  // ------------------------------------------------------------
   Widget _buildHomeworkCard(BuildContext context, Map<String, dynamic> data) {
-    Timestamp? dueTimestamp = data['dueDate'] as Timestamp?;
-    DateTime dueDate = dueTimestamp?.toDate() ?? DateTime.now();
+    final String diaryId = data['id']?.toString() ?? "";
 
-    bool isUrgent = dueDate.difference(DateTime.now()).inDays <= 2;
+    final bool isUnread = !_readDiaryIds.contains(diaryId);
+
+    // Automatic posted date
+    DateTime postedDate = DateTime.now();
+
+    if (data['timestamp'] is Timestamp) {
+      postedDate = (data['timestamp'] as Timestamp).toDate();
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
+
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(.05),
@@ -194,106 +353,176 @@ class _StudentHomeworkListScreenState extends State<StudentHomeworkListScreen> {
           ),
         ],
       ),
+
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => _showHomeworkDetails(context, data),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                height: 50,
-                width: 50,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A5F).withOpacity(.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.assignment_outlined,
-                  color: Color(0xFF1E3A5F),
-                ),
-              ),
 
-              const SizedBox(width: 14),
+        onTap: () async {
+          // ----------------------------------------------
+          // MARK AS READ FIRST
+          // ----------------------------------------------
+          await _markDiaryAsRead(diaryId);
 
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data['title'] ?? "No Title",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+          // ----------------------------------------------
+          // THEN OPEN DETAILS
+          // ----------------------------------------------
+          if (!context.mounted) return;
+
+          _showHomeworkDetails(context, data);
+        },
+
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+
+              child: Row(
+                children: [
+                  // ------------------------------------------
+                  // ICON
+                  // ------------------------------------------
+                  Container(
+                    height: 50,
+                    width: 50,
+
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A5F).withOpacity(.08),
+
+                      borderRadius: BorderRadius.circular(12),
                     ),
 
-                    const SizedBox(height: 8),
-
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.book_outlined,
-                          size: 15,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(
-                            data['subject'] ?? "N/A",
-                            style: TextStyle(color: Colors.grey.shade700),
-                          ),
-                        ),
-                      ],
+                    child: const Icon(
+                      Icons.menu_book_outlined,
+                      color: Color(0xFF1E3A5F),
                     ),
+                  ),
 
-                    const SizedBox(height: 8),
+                  const SizedBox(width: 14),
 
-                    Row(
+                  // ------------------------------------------
+                  // CONTENT
+                  // ------------------------------------------
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+
                       children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 15,
-                          color: isUrgent ? Colors.red : Colors.grey,
-                        ),
-                        const SizedBox(width: 5),
+                        // TITLE
                         Text(
-                          DateFormat('dd MMM yyyy').format(dueDate),
+                          data['title'] ?? "No Title",
+
+                          maxLines: 1,
+
+                          overflow: TextOverflow.ellipsis,
+
                           style: TextStyle(
-                            color: isUrgent ? Colors.red : Colors.grey.shade700,
-                            fontWeight: isUrgent
+                            fontSize: 16,
+                            fontWeight: isUnread
                                 ? FontWeight.bold
-                                : FontWeight.w500,
+                                : FontWeight.w600,
                           ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // CLASS
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.class_outlined,
+                              size: 15,
+                              color: Colors.grey,
+                            ),
+
+                            const SizedBox(width: 5),
+
+                            Expanded(
+                              child: Text(
+                                data['class'] ?? "N/A",
+
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // POSTED DATE
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 15,
+                              color: Colors.grey,
+                            ),
+
+                            const SizedBox(width: 5),
+
+                            Text(
+                              DateFormat('dd MMM yyyy').format(postedDate),
+
+                              style: TextStyle(
+                                color: Colors.grey.shade700,
+
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  // ARROW
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                    color: Colors.grey.shade500,
+                  ),
+                ],
+              ),
+            ),
+
+            // ------------------------------------------------
+            // RED UNREAD DOT
+            // ------------------------------------------------
+            if (isUnread)
+              Positioned(
+                top: 10,
+                right: 10,
+
+                child: Container(
+                  width: 11,
+                  height: 11,
+
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
-
-              const SizedBox(width: 10),
-
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 16,
-                color: Colors.grey.shade500,
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
+// ============================================================
+// HOMEWORK / DIARY DETAIL SCREEN
+// ============================================================
+
 class HomeworkDetailScreen extends StatelessWidget {
   final Map<String, dynamic> data;
 
   const HomeworkDetailScreen({super.key, required this.data});
 
+  // ------------------------------------------------------------
+  // VIEW IMAGE
+  // ------------------------------------------------------------
   void _viewImage(BuildContext context, String imageUrl) {
     Navigator.push(
       context,
@@ -301,16 +530,32 @@ class HomeworkDetailScreen extends StatelessWidget {
         builder: (_) => Scaffold(
           appBar: AppBar(
             backgroundColor: Colors.black,
+
             iconTheme: const IconThemeData(color: Colors.white),
           ),
+
           backgroundColor: Colors.black,
+
           body: Center(
             child: InteractiveViewer(
               panEnabled: true,
+
               boundaryMargin: const EdgeInsets.all(20),
+
               minScale: 0.5,
               maxScale: 4,
-              child: Image.network(imageUrl),
+
+              child: Image.network(
+                imageUrl,
+
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 60,
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -318,77 +563,218 @@ class HomeworkDetailScreen extends StatelessWidget {
     );
   }
 
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     List<dynamic> attachments = data['attachments'] ?? [];
 
+    DateTime? postedDate;
+
+    if (data['timestamp'] is Timestamp) {
+      postedDate = (data['timestamp'] as Timestamp).toDate();
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+
       appBar: AppBar(
         elevation: 0,
         centerTitle: true,
+
         backgroundColor: const Color(0xFF1E3A5F),
+
         foregroundColor: Colors.white,
+
         title: Text(
-          data['title'] ?? 'Homework Detail',
+          data['title'] ?? 'Diary Detail',
+
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+
           children: [
+            // --------------------------------------------------
+            // CLASS
+            // --------------------------------------------------
+            Container(
+              width: double.infinity,
+
+              padding: const EdgeInsets.all(14),
+
+              decoration: BoxDecoration(
+                color: Colors.white,
+
+                borderRadius: BorderRadius.circular(12),
+
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(.04),
+
+                    blurRadius: 6,
+
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+
+              child: Row(
+                children: [
+                  const Icon(Icons.class_outlined, color: Color(0xFF1E3A5F)),
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    child: Text(
+                      "Class: ${data['class'] ?? 'N/A'}",
+
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // --------------------------------------------------
+            // POSTED DATE
+            // --------------------------------------------------
+            if (postedDate != null)
+              Container(
+                width: double.infinity,
+
+                padding: const EdgeInsets.all(14),
+
+                decoration: BoxDecoration(
+                  color: Colors.white,
+
+                  borderRadius: BorderRadius.circular(12),
+
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(.04),
+
+                      blurRadius: 6,
+
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_outlined,
+
+                      color: Color(0xFF1E3A5F),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    Expanded(
+                      child: Text(
+                        "Posted: ${DateFormat('dd MMM yyyy, hh:mm a').format(postedDate)}",
+
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 20),
+
+            // --------------------------------------------------
+            // DESCRIPTION
+            // --------------------------------------------------
             const Text(
               "Description:",
+
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
+
             const SizedBox(height: 8),
+
             Text(
               data['description'] ?? "No description provided.",
+
               style: const TextStyle(fontSize: 15),
             ),
+
             const SizedBox(height: 20),
 
-            Text(
-              "Subject: ${data['subject'] ?? 'N/A'}",
-              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
-            ),
-            const SizedBox(height: 20),
-
+            // --------------------------------------------------
+            // ATTACHMENTS
+            // --------------------------------------------------
             if (attachments.isNotEmpty) ...[
               const Text(
                 "Attachments:",
+
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
+
               const SizedBox(height: 10),
+
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
+
                 children: attachments.map((url) {
                   bool isPdf = url.toString().toLowerCase().contains(".pdf");
 
                   return InkWell(
-                    onTap: () => _viewImage(context, url),
+                    onTap: () {
+                      if (!isPdf) {
+                        _viewImage(context, url.toString());
+                      }
+                    },
+
                     child: Container(
                       padding: const EdgeInsets.all(8),
+
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
+
                         borderRadius: BorderRadius.circular(8),
+
                         border: Border.all(color: Colors.blue.shade200),
                       ),
+
                       child: Column(
                         children: [
                           Icon(
                             isPdf ? Icons.picture_as_pdf : Icons.image,
+
                             color: isPdf ? Colors.red : Colors.blue,
+
                             size: 40,
                           ),
+
                           Text(
                             isPdf ? "PDF" : "View",
+
                             style: const TextStyle(fontSize: 10),
                           ),
                         ],

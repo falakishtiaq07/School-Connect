@@ -12,12 +12,12 @@ import 'package:school_connect/screens/verify_challan_screen.dart';
 import 'package:school_connect/screens/view_announcements_screen.dart';
 import 'package:school_connect/screens/view_homework_screen.dart';
 import 'package:school_connect/screens/view_reports_screen.dart';
+import 'package:school_connect/service/one_signal_service.dart';
 import 'firebase_options.dart';
 import 'screens/welcome_screen.dart';
 import 'package:school_connect/screens/admin_dashboard_screen.dart';
 import 'theme/app_theme.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -28,48 +28,44 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-    OneSignal.initialize("ed2a3db5-57d7-4e79-a39b-fe367eaa8c55");
-    OneSignal.Notifications.addForegroundWillDisplayListener((event) {
-      event.notification.display();
-    });
-    OneSignal.Notifications.requestPermission(true);
-    OneSignal.Notifications.addClickListener((event) {
-      final data = event.notification.additionalData;
-      final type = data?['type'];
+    await OneSignalService.initialize(
+      onNotificationClick: (event) {
+        final data = event.notification.additionalData;
+        final type = data?['type'];
 
-      switch (type) {
-        case 'complaint':
-          navigatorKey.currentState?.pushNamed('/complaints');
-          break;
-        case 'announcement':
-          navigatorKey.currentState?.pushNamed('/announcements');
-          break;
-        case 'homework':
-          navigatorKey.currentState?.pushNamed('/homework');
-          break;
-        case 'leave_request':
-        case 'leave_status':
-          navigatorKey.currentState?.pushNamed('/leaves');
-          break;
-        case 'attendance':
-          navigatorKey.currentState?.pushNamed('/attendance');
-          break;
-        case 'report':
-          navigatorKey.currentState?.pushNamed('/reports');
-          break;
-        case 'challan':
-          navigatorKey.currentState?.pushNamed('/challans');
-          break;
-        case 'receipt':
-          navigatorKey.currentState?.pushNamed('/receipts');
-          break;
-      }
-    });
+        switch (type) {
+          case 'complaint':
+            navigatorKey.currentState?.pushNamed('/complaints');
+            break;
+          case 'announcement':
+            navigatorKey.currentState?.pushNamed('/announcements');
+            break;
+          case 'homework':
+            navigatorKey.currentState?.pushNamed('/homework');
+            break;
+          case 'leave_request':
+          case 'leave_status':
+            navigatorKey.currentState?.pushNamed('/leaves');
+            break;
+          case 'attendance':
+            navigatorKey.currentState?.pushNamed('/attendance');
+            break;
+          case 'report':
+            navigatorKey.currentState?.pushNamed('/reports');
+            break;
+          case 'challan':
+            navigatorKey.currentState?.pushNamed('/challans');
+            break;
+          case 'receipt':
+            navigatorKey.currentState?.pushNamed('/receipts');
+            break;
+        }
+      },
+    );
 
-    print("Init successful!");
+    print('Init successful!');
   } catch (e) {
-    print("Firebase FATAL ERROR: $e");
+    print('Firebase FATAL ERROR: $e');
   }
   runApp(const MyApp());
 }
@@ -137,17 +133,44 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class RoleBasedNavigator extends StatelessWidget {
+class RoleBasedNavigator extends StatefulWidget {
   final User user;
   const RoleBasedNavigator({super.key, required this.user});
 
   @override
+  State<RoleBasedNavigator> createState() => _RoleBasedNavigatorState();
+}
+
+class _RoleBasedNavigatorState extends State<RoleBasedNavigator> {
+  bool _oneSignalConfigured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    saveFCMToken(widget.user.uid);
+  }
+
+  Future<void> _configureOneSignal(Map<String, dynamic> data) async {
+    if (_oneSignalConfigured) return;
+
+    final role = data['role'].toString().toLowerCase().trim();
+    await OneSignalService.setupOneSignal(
+      widget.user.uid,
+      role,
+      studentClass: role == 'student' ? data['class']?.toString() : null,
+    );
+
+    if (mounted) {
+      setState(() => _oneSignalConfigured = true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    saveFCMToken(user.uid);
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance
           .collection('users')
-          .doc(user.uid)
+          .doc(widget.user.uid)
           .get(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -157,12 +180,18 @@ class RoleBasedNavigator extends StatelessWidget {
         }
 
         if (snapshot.hasData && snapshot.data!.exists) {
-          String role = snapshot.data!.get('role').toString().toLowerCase();
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          final role = data['role'].toString().toLowerCase();
+
+          if (!_oneSignalConfigured) {
+            _configureOneSignal(data);
+          }
+
           if (role == 'admin') return const AdminDashboardScreen();
           if (role == 'teacher') return const TeacherDashboardScreen();
           if (role == 'student') return const StudentDashboardScreen();
         }
-        return const WelcomeScreen(); // Agar role match na ho
+        return const WelcomeScreen();
       },
     );
   }

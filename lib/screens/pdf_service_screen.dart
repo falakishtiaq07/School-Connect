@@ -1,7 +1,7 @@
 import 'dart:typed_data';
+import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 // ─── Data Models ──────────────────────────────────────────────────────────────
 
@@ -117,12 +117,40 @@ class ChallanPdfService {
   }
 
   // ── generateAndShare ─────────────────────────────────────────────────────
-  static Future<void> generateAndShare(ChallanData data) async {
-    final bytes = await generatePdf(data);
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: 'challan_${data.rollNo}_${data.month.replaceAll(' ', '_')}.pdf',
-    );
+  // ── generateAndUploadToCloudinary ────────────────────────────────────────
+  static Future<String?> generateAndUploadToCloudinary(
+    ChallanData data,
+    String cloudName,
+    String uploadPreset,
+  ) async {
+    try {
+      // 1. PDF bytes generate karein
+      final bytes = await generatePdf(data);
+
+      // 2. Cloudinary par upload karein
+      final cloudinary = CloudinaryPublic(
+        cloudName,
+        uploadPreset,
+        cache: false,
+      );
+
+      CloudinaryResponse response = await cloudinary.uploadFile(
+        CloudinaryFile.fromByteData(
+          ByteData.sublistView(
+            bytes,
+          ), // Uint8List ko ByteData mein convert kiya
+          folder: 'challans',
+          identifier: 'challan_${data.rollNo}_${data.challanNo}',
+          resourceType: CloudinaryResourceType.Auto,
+        ),
+      );
+
+      // 3. Cloudinary ka secure URL return kar dega
+      return response.secureUrl;
+    } catch (e) {
+      print('Cloudinary PDF Upload Error: $e');
+      return null;
+    }
   }
 
   // ── Dashed divider (8pt height) ──────────────────────────────────────────
@@ -463,13 +491,22 @@ class ChallanPdfService {
               children: [
                 pw.Text(
                   'Above due date is only for current month. Previous dues must be paid immediately.',
+
                   style: pw.TextStyle(
                     fontSize: 6.5,
                     fontWeight: pw.FontWeight.bold,
                     color: PdfColors.red700,
                   ),
                 ),
-                pw.SizedBox(height: 3),
+                pw.Text(
+                  "Fee must be paid on or before the due date.",
+                  style: const pw.TextStyle(fontSize: 12),
+                ),
+                pw.Text(
+                  "Keep the student copy safe for future record verification.",
+                  style: const pw.TextStyle(fontSize: 12),
+                ),
+                pw.SizedBox(height: 12),
                 pw.Text(
                   'Pay via Kuickpay: JazzCash, Easypaisa, HBL, Meezan, MCB, UBL or any 1Link bank.',
                   style: const pw.TextStyle(fontSize: 6.5, color: _grey),
