@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 
 class NotificationService {
   static const String oneSignalAppId = "ed2a3db5-57d7-4e79-a39b-fe367eaa8c55";
+  static const String restApiKey =
+      "os_v2_app_5uvd3nkx25hhti437y3h5kumku6wxmppzgfebnvgwbbbbkpkoqzqrvkk2pve3rnqxtp5fjn47j6ya43eyfxuilzhn22f5t3rppxh5ra";
 
   static const String _sendUrl =
       "https://admin-backend-six-delta.vercel.app/api/send_push";
@@ -148,7 +150,10 @@ class NotificationService {
 
       final response = await http.post(
         Uri.parse(_sendUrl),
-        headers: {"Content-Type": "application/json"},
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "key $restApiKey",
+        },
         body: jsonEncode(payload),
       );
 
