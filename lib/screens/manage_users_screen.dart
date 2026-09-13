@@ -177,6 +177,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     final ri = idx('role');
     final ci = idx('class');
     final rni = idx('rollNo');
+    final fni = idx('father_name');
 
     if (ni < 0 || ei < 0 || ri < 0) {
       _snack('Required columns: name, email, role', isError: true);
@@ -220,6 +221,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       }
       final cls = cell(row, ci);
       final rollNo = cell(row, rni);
+      final fatherName = cell(row, fni);
       final label = name.isNotEmpty ? name : 'Row ${i + 2}';
 
       // ── Validation ─────────────────────────────────────────────────────
@@ -252,9 +254,8 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       }
 
       // ── Password: Name@123 ──────────────────────────────────────────────
-      final firstName = name.split(' ').first;
+      final firstName = name.split(' ').first.toLowerCase();
       final password = '${firstName}@123';
-
       // ── Create Firebase Auth user ───────────────────────────────────────
       try {
         final cred = await _createUserAndSendVerification(
@@ -266,6 +267,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
         final Map<String, dynamic> doc = {
           'uid': cred.user!.uid,
           'name': name,
+          'father_name': fatherName,
           'email': email,
           'role': role,
           'class': cls,
@@ -444,10 +446,69 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
         .where('class', isEqualTo: cls)
         .get();
 
+    if (snap.docs.isEmpty) {
+      _snack('No students found in Class $cls.');
+      return;
+    }
+
+    // Ab har student ke liye ek Auth-delete call bhi hoti hai, isliye
+    // bade class ke liye kuch second lag sakte hain — loading dikhate hain.
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          const Center(child: CircularProgressIndicator(color: _navy)),
+    );
+
+    final url = Uri.parse(
+      'https://admin-backend-six-delta.vercel.app/api/delete_user',
+    );
+
     final batch = FirebaseFirestore.instance.batch();
-    for (final d in snap.docs) batch.delete(d.reference);
+    final List<String> authFailNames = [];
+
+    for (final d in snap.docs) {
+      final data = d.data() as Map<String, dynamic>;
+      final uid = data['uid']?.toString() ?? d.id;
+      final name = data['name']?.toString() ?? 'Unknown';
+
+      try {
+        // Bilkul _deleteUser wali same logic — pehle Authentication se
+        // delete karo, tabhi Firestore record bhi hataen.
+        final response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'uid': uid}),
+        );
+
+        if (response.statusCode == 200) {
+          batch.delete(d.reference);
+        } else {
+          authFailNames.add(name);
+          debugPrint(
+            'Class delete: auth removal failed for $name ($uid): ${response.body}',
+          );
+        }
+      } catch (e) {
+        authFailNames.add(name);
+        debugPrint('Class delete: auth removal error for $name ($uid): $e');
+      }
+    }
+
     await batch.commit();
-    _snack('Class $cls — ${snap.docs.length} student(s) deleted.');
+
+    if (mounted) Navigator.pop(context); // loading dialog band
+
+    final deletedCount = snap.docs.length - authFailNames.length;
+
+    if (authFailNames.isEmpty) {
+      _snack('Class $cls — $deletedCount student(s) removed.');
+    } else {
+      _snack(
+        'Class $cls — $deletedCount removed fully. ${authFailNames.length} could not be removed and were kept: ${authFailNames.join(", ")}',
+        isError: true,
+      );
+    }
   }
   // ═══════════════════════════════════════════════════════════════════════════
   // EDIT STUDENT
@@ -599,6 +660,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
             try {
               await doc.reference.update({
                 'name': values['name'],
+                'father_name': values['father_name'],
                 'email': values['email'],
                 'rollNo': values['rollNo'],
                 'class': values['class'],
@@ -2624,6 +2686,7 @@ class _EditStudentDialog extends StatefulWidget {
 
 class _EditStudentDialogState extends State<_EditStudentDialog> {
   late final TextEditingController nameCtrl;
+  late final TextEditingController fatherNameCtrl;
   late final TextEditingController emailCtrl;
   late final TextEditingController rollCtrl;
   late final TextEditingController classCtrl;
@@ -2642,6 +2705,9 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
     final d = widget.doc.data() as Map<String, dynamic>;
 
     nameCtrl = TextEditingController(text: d['name']?.toString() ?? '');
+    fatherNameCtrl = TextEditingController(
+      text: d['father_name']?.toString() ?? '',
+    );
     emailCtrl = TextEditingController(text: d['email']?.toString() ?? '');
     rollCtrl = TextEditingController(text: d['rollNo']?.toString() ?? '');
     classCtrl = TextEditingController(text: d['class']?.toString() ?? '');
@@ -2650,6 +2716,7 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
   @override
   void dispose() {
     nameCtrl.dispose();
+    fatherNameCtrl.dispose();
     emailCtrl.dispose();
     rollCtrl.dispose();
     classCtrl.dispose();
@@ -2685,10 +2752,7 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(
-          color: accentColor,
-          width: 1.5,
-        ), // Yahan fix kar diya
+        borderSide: const BorderSide(color: accentColor, width: 1.5),
       ),
       filled: true,
       fillColor: const Color(0xFFF9FAFB),
@@ -2697,6 +2761,7 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
 
   Future<void> _handleSave() async {
     final name = nameCtrl.text.trim();
+    final fatherName = fatherNameCtrl.text.trim();
     final email = emailCtrl.text.trim();
     final roll = rollCtrl.text.trim();
     final cls = classCtrl.text.trim();
@@ -2720,6 +2785,7 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
 
     final success = await widget.onSave({
       'name': name,
+      'father_name': fatherName,
       'email': email,
       'rollNo': roll,
       'class': cls,
@@ -2777,7 +2843,13 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
                 decoration: fieldDeco('Enter full name'),
               ),
               const SizedBox(height: 14),
-
+              fieldLabel("Father's Name"), // ← naya
+              TextField(
+                controller: fatherNameCtrl,
+                enabled: !saving,
+                decoration: fieldDeco("Enter father's name"),
+              ),
+              const SizedBox(height: 14),
               fieldLabel('Email'),
               TextField(
                 controller: emailCtrl,

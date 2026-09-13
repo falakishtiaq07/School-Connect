@@ -5,12 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 class AttendanceAlertsScreen extends StatelessWidget {
   const AttendanceAlertsScreen({super.key});
 
-  // Function to delete from Firestore
   void _deleteNotification(String docId) {
     FirebaseFirestore.instance.collection('notifications').doc(docId).delete();
   }
 
-  // Helper widget for individual stat card
   Widget _buildStatCard(
     String title,
     String count,
@@ -94,7 +92,6 @@ class AttendanceAlertsScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          // ── Stats Header StreamBuilder ──────────────────────────────
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('attendance_records')
@@ -150,7 +147,6 @@ class AttendanceAlertsScreen extends StatelessWidget {
             },
           ),
 
-          // ── Notifications List StreamBuilder ────────────────────────
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -199,7 +195,6 @@ class AttendanceAlertsScreen extends StatelessWidget {
                     final doc = alerts[index];
                     final data = doc.data() as Map<String, dynamic>;
 
-                    // Read status check
                     final bool isRead = data['isRead'] ?? false;
 
                     Timestamp? timestamp =
@@ -265,7 +260,6 @@ class AttendanceAlertsScreen extends StatelessWidget {
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
-                                        // Red Dot Indicator for Unread notifications
                                         if (!isRead) ...[
                                           const SizedBox(width: 8),
                                           Container(
@@ -360,7 +354,6 @@ class AttendanceAlertsScreen extends StatelessWidget {
   }
 }
 
-// ── Full Screen Detail Page ────────────────────────────────────────────────
 class AttendanceAlertDetailScreen extends StatefulWidget {
   final Map<String, dynamic> data;
   final String docId;
@@ -383,7 +376,6 @@ class _AttendanceAlertDetailScreenState
   @override
   void initState() {
     super.initState();
-    // Mark as read automatically when screen opens
     if (!widget.isRead) {
       FirebaseFirestore.instance
           .collection('notifications')

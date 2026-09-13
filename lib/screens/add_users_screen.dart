@@ -42,7 +42,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
       return;
     }
 
-    // Sirf first name lo
     final firstName = fullName.split(' ').first.toLowerCase();
 
     if (mounted) {
@@ -54,7 +53,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
   String _formatClassSection(String input) {
     String cleaned = input.trim().toUpperCase();
-    // Space, underscore, ya multiple hyphens ko single hyphen '-' mein badal dega
     cleaned = cleaned.replaceAll(RegExp(r'[\s_]+'), '-');
     return cleaned;
   }
@@ -163,9 +161,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
                       const SizedBox(height: 20),
 
-                      // =========================
-                      // NAME
-                      // =========================
                       TextFormField(
                         controller: _nameController,
                         decoration: const InputDecoration(
@@ -182,9 +177,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
                       const SizedBox(height: 15),
 
-                      // =========================
-                      // EMAIL
-                      // =========================
                       TextFormField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
@@ -210,9 +202,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
                       const SizedBox(height: 15),
 
-                      // =========================
-                      // GENERATED PASSWORD
-                      // =========================
                       TextFormField(
                         controller: _passwordController,
                         readOnly: true,
@@ -227,9 +216,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
                       const SizedBox(height: 25),
 
-                      // =========================
-                      // ROLE
-                      // =========================
                       DropdownButtonFormField<String>(
                         initialValue: _selectedRole,
                         decoration: const InputDecoration(
@@ -245,8 +231,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                           setState(() {
                             _selectedRole = v;
 
-                            // Agar Teacher select ho,
-                            // Student-specific fields clear kar dein.
                             if (v != "Student") {
                               _rollNoController.clear();
                               _fatherNameController.clear();
@@ -263,11 +247,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
                       const SizedBox(height: 15),
 
-                      // =========================
-                      // STUDENT FIELDS
-                      // =========================
                       if (_selectedRole == "Student") ...[
-                        // ROLL NUMBER
                         TextFormField(
                           controller: _rollNoController,
                           keyboardType: TextInputType.text,
@@ -285,7 +265,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
                         const SizedBox(height: 15),
 
-                        // FATHER NAME
                         TextFormField(
                           controller: _fatherNameController,
                           keyboardType: TextInputType.name,
@@ -306,9 +285,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                         const SizedBox(height: 15),
                       ],
 
-                      // =========================
-                      // CLASS
-                      // =========================
                       TextFormField(
                         controller: _classController,
                         decoration: const InputDecoration(
@@ -326,9 +302,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
 
                       const SizedBox(height: 25),
 
-                      // =========================
-                      // BUTTONS
-                      // =========================
                       Row(
                         children: [
                           Expanded(
@@ -345,16 +318,10 @@ class _AddUserScreenState extends State<AddUserScreen> {
                           Expanded(
                             child: FilledButton(
                               onPressed: () async {
-                                // =========================
-                                // FORM VALIDATION
-                                // =========================
                                 if (!_formKey.currentState!.validate()) {
                                   return;
                                 }
 
-                                // =========================
-                                // FIRST LOADING
-                                // =========================
                                 showDialog(
                                   context: context,
                                   barrierDismissible: false,
@@ -366,9 +333,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                 );
 
                                 try {
-                                  // =========================
-                                  // CHECK EMAIL
-                                  // =========================
                                   final emailExists = await checkEmailExists(
                                     _emailController.text.trim(),
                                   );
@@ -389,9 +353,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                     return;
                                   }
 
-                                  // =========================
-                                  // CHECK ROLL NUMBER
-                                  // =========================
                                   if (_selectedRole == "Student") {
                                     final rollExists = await checkRollNoExists(
                                       _rollNoController.text.trim(),
@@ -414,9 +375,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                     }
                                   }
 
-                                  // =========================
-                                  // SECOND LOADING
-                                  // =========================
                                   showDialog(
                                     context: context,
                                     barrierDismissible: false,
@@ -427,9 +385,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                     },
                                   );
 
-                                  // =========================
-                                  // CREATE AUTH USER
-                                  // =========================
                                   final UserCredential userCredential =
                                       await _createUserWithoutSigningInAdminOut(
                                         email: _emailController.text.trim(),
@@ -437,9 +392,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                             .trim(),
                                       );
 
-                                  // =========================
-                                  // USER DATA
-                                  // =========================
                                   final Map<String, dynamic> userData = {
                                     "uid": userCredential.user!.uid,
                                     "name": _nameController.text.trim(),
@@ -454,23 +406,14 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                     "createdAt": FieldValue.serverTimestamp(),
                                   };
 
-                                  // =========================
-                                  // STUDENT DATA
-                                  // =========================
                                   if (_selectedRole == "Student") {
                                     userData["rollNo"] = _rollNoController.text
                                         .trim();
 
-                                    // IMPORTANT:
-                                    // Ye EXACT field name
-                                    // student_profile mein bhi use hoga.
                                     userData["father_name"] =
                                         _fatherNameController.text.trim();
                                   }
 
-                                  // =========================
-                                  // SAVE USER
-                                  // =========================
                                   await FirebaseFirestore.instance
                                       .collection('users')
                                       .doc(userCredential.user!.uid)
@@ -491,7 +434,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                 } on FirebaseAuthException catch (e) {
                                   if (!mounted) return;
 
-                                  // Loading dialog close
                                   Navigator.pop(context);
 
                                   String errorMessage =

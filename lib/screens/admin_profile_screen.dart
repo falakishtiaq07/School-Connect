@@ -17,7 +17,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
 
   final User? _user = FirebaseAuth.instance.currentUser;
 
-  // ── Name edit state ────────────────────────────────────────────────────────
   final _nameCtrl = TextEditingController();
   bool _isEditing = false;
   bool _isSaving = false;
@@ -61,7 +60,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     }
   }
 
-  // ── Change Password Dialog — same as student/teacher ──────────────────────
   void _showChangePasswordDialog() {
     final currentPwdCtrl = TextEditingController();
     final newPwdCtrl = TextEditingController();
@@ -130,14 +128,12 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
               if (user == null || user.email == null)
                 throw Exception('User not found.');
 
-              // Step 1: Re-authenticate
               final credential = EmailAuthProvider.credential(
                 email: user.email!,
                 password: currentPwd,
               );
               await user.reauthenticateWithCredential(credential);
 
-              // Step 2: Update password
               await user.updatePassword(newPwd);
 
               if (ctx.mounted) Navigator.pop(ctx);
@@ -380,10 +376,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
-
   @override
   Widget build(BuildContext context) {
     if (_user == null) {
@@ -403,7 +395,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         ),
       ),
 
-      // ── Drawer ────────────────────────────────────────────────────────────
       drawer: Drawer(
         backgroundColor: _white,
         child: Column(
@@ -475,7 +466,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         ),
       ),
 
-      // ── Body: StreamBuilder so name edit reflects instantly ────────────────
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
@@ -494,7 +484,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
           final email = _user!.email ?? data['email']?.toString() ?? '';
           final role = data['role']?.toString() ?? 'Admin';
 
-          // Only update controller when not actively editing
           if (!_isEditing) _nameCtrl.text = currentName;
 
           final initial = currentName.isNotEmpty
@@ -504,14 +493,12 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
           return SingleChildScrollView(
             child: Column(
               children: [
-                // ── Header ────────────────────────────────────────────────
                 Container(
                   width: double.infinity,
                   color: _navy,
                   padding: const EdgeInsets.fromLTRB(24, 36, 24, 32),
                   child: Column(
                     children: [
-                      // Avatar
                       Container(
                         width: 90,
                         height: 90,
@@ -575,7 +562,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
-                      // ── Name card — editable ──────────────────────────────
                       Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
@@ -666,7 +652,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              // Edit / Save button
                               _isSaving
                                   ? const SizedBox(
                                       width: 20,
@@ -729,7 +714,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
 
                       const SizedBox(height: 12),
 
-                      // ── Role + Email card ────────────────────────────────
                       _infoCard([
                         _InfoRow(
                           Icons.workspace_premium_outlined,
@@ -741,7 +725,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
 
                       const SizedBox(height: 12),
 
-                      // ── Change Password ───────────────────────────────────
                       _actionCard(
                         icon: Icons.lock_outline,
                         label: 'Change Password',
@@ -761,7 +744,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     );
   }
 
-  // ── Info card ─────────────────────────────────────────────────────────────
   Widget _infoCard(List<_InfoRow> rows) {
     return Container(
       width: double.infinity,

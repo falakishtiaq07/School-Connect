@@ -7,7 +7,6 @@ class OneSignalService {
   static bool _sdkInitialized = false;
   static String? _lastConfiguredUid;
 
-  /// Call once from main() before runApp().
   static Future<void> initialize({
     void Function(OSNotificationClickEvent event)? onNotificationClick,
   }) async {
@@ -34,7 +33,6 @@ class OneSignalService {
     debugPrint('OneSignal SDK initialized');
   }
 
-  /// Ensures the device has an active push subscription before login/tags.
   static Future<bool> ensurePushSubscription({
     Duration timeout = const Duration(seconds: 20),
   }) async {
@@ -83,8 +81,6 @@ class OneSignalService {
     return false;
   }
 
-  /// Links this device to Firebase UID and sets targeting tags.
-  /// Tags are always stored in lowercase so NotificationService filters match.
   static Future<void> setupOneSignal(
     String uid,
     String role, {
@@ -113,7 +109,6 @@ class OneSignalService {
       await OneSignal.login(normalizedUid);
       debugPrint('OneSignal login called with external_id=$normalizedUid');
 
-      // Give the SDK a moment to attach external_id to the subscription.
       await Future.delayed(const Duration(milliseconds: 800));
 
       final Map<String, String> tags = {'role': normalizedRole};

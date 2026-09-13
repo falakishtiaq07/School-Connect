@@ -3,10 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:school_connect/service/notification_service.dart';
 
-/// ============================================================
-/// OUTER SHELL — header + tab switcher + IndexedStack
-/// (keeps both tab bodies alive so state isn't lost on switch)
-/// ============================================================
 class AttendanceManagementScreen extends StatefulWidget {
   final String teacherClass;
   const AttendanceManagementScreen({super.key, required this.teacherClass});
@@ -21,7 +17,6 @@ class _AttendanceManagementScreenState
   int _selectedTab = 0;
   final GlobalKey<_AttendanceHistoryBodyState> _historyKey =
       GlobalKey<_AttendanceHistoryBodyState>();
-  // ---- Dashboard theme ----
   static const Color navy = Color(0xFF1E3A5F);
   static const Color navyDark = Color(0xFF16304E);
   static const Color bg = Color(0xFFF0F4F8);
@@ -194,10 +189,6 @@ class _AttendanceManagementScreenState
   }
 }
 
-/// ============================================================
-/// TAB 1 — MARK ATTENDANCE
-/// (logic identical to the original MarkAttendanceScreen)
-/// ============================================================
 class _MarkAttendanceBody extends StatefulWidget {
   final String teacherClass;
   final VoidCallback onOpenHistory;
@@ -397,7 +388,6 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
     }
   }
 
-  // Attendance Summary calculation
   int get countPresent =>
       students.where((s) => s['status'] == 'Present').length;
   int get countAbsent => students.where((s) => s['status'] == 'Absent').length;
@@ -524,8 +514,6 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
                       isLoading = true;
                     });
 
-                    // IMPORTANT:
-                    // Selected date ke students + existing attendance load karega
                     await fetchStudentsForDate();
                   }
                 },
@@ -554,7 +542,6 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
             ],
           ),
 
-          // 2. Vertical Divider
           Container(
             height: 44,
             width: 1,
@@ -562,7 +549,6 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
             color: borderColor,
           ),
 
-          // 3. Summary Section (Class, Present, Absent)
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -816,10 +802,6 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
   }
 }
 
-/// ============================================================
-/// TAB 2 — ATTENDANCE HISTORY
-/// (logic identical to the original AttendanceHistoryScreen)
-/// ============================================================
 class _AttendanceHistoryBody extends StatefulWidget {
   final double horizontalPadding;
   final String teacherClass;
@@ -1007,7 +989,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
   Widget build(BuildContext context) {
     final double hPad = widget.horizontalPadding;
 
-    // Dynamic Query Logic
     Query query = FirebaseFirestore.instance
         .collection('attendance_records')
         .where('class', isEqualTo: widget.teacherClass)
@@ -1026,14 +1007,12 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
               : StreamBuilder<QuerySnapshot>(
                   stream: query.snapshots(),
                   builder: (context, snapshot) {
-                    // 1. Loading state handle karein
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
                         child: CircularProgressIndicator(color: navy),
                       );
                     }
 
-                    // 2. Error state handle karein
                     if (snapshot.hasError) {
                       return Center(child: Text("Error: ${snapshot.error}"));
                     }
@@ -1075,7 +1054,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
 
                     return Column(
                       children: [
-                        // Selection Bar
                         Container(
                           margin: EdgeInsets.fromLTRB(hPad, 8, hPad, 4),
                           padding: const EdgeInsets.symmetric(
@@ -1147,8 +1125,7 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                             ],
                           ),
                         ),
-                        // List View
-                        // List View
+
                         Expanded(
                           child: showAttendanceCount
                               ? _buildAttendanceCount()
@@ -1182,9 +1159,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
       padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
       child: Row(
         children: [
-          // ============================================
-          // DATE FILTER
-          // ============================================
           Expanded(
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
@@ -1209,7 +1183,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                       ? DateTime.parse(selectedDate!)
                       : now,
                   firstDate: DateTime(2025),
-                  // Future dates block
                   lastDate: now,
                 );
 
@@ -1227,9 +1200,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
 
           const SizedBox(width: 8),
 
-          // ============================================
-          // ATTENDANCE COUNT
-          // ============================================
           ElevatedButton.icon(
             onPressed: () async {
               await selectAttendanceMonth();
@@ -1248,9 +1218,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
             label: const Text("Attendance Count"),
           ),
 
-          // ============================================
-          // CLEAR DATE
-          // ============================================
           if (selectedDate != null) ...[
             const SizedBox(width: 8),
             IconButton(
@@ -1340,7 +1307,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
   }
 
   Widget _buildAttendanceCount() {
-    // Agar month select nahi hua to month selection dialog show karo
     if (selectedCountMonth == null) {
       return const SizedBox.shrink();
     }
@@ -1376,9 +1342,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
 
     return Column(
       children: [
-        // =====================================================
-        // MONTH HEADER
-        // =====================================================
         Padding(
           padding: EdgeInsets.fromLTRB(
             widget.horizontalPadding,
@@ -1424,9 +1387,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
           ),
         ),
 
-        // =====================================================
-        // ATTENDANCE DATA
-        // =====================================================
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -1458,13 +1418,8 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                 );
               }
 
-              // =================================================
-              // STUDENT DATA
-              // =================================================
-
               final Map<String, Map<String, dynamic>> students = {};
 
-              // Same student + same date ko duplicate count nahi karna
               final Set<String> countedRecords = {};
 
               for (final doc in snapshot.data!.docs) {
@@ -1485,18 +1440,10 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                   continue;
                 }
 
-                // =================================================
-                // ONLY SELECTED MONTH
-                // =================================================
-
                 if (date.compareTo(monthStart) < 0 ||
                     date.compareTo(nextMonthStart) >= 0) {
                   continue;
                 }
-
-                // =================================================
-                // DUPLICATE PROTECTION
-                // =================================================
 
                 final String recordKey = "${studentId}_$date";
 
@@ -1506,10 +1453,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
 
                 countedRecords.add(recordKey);
 
-                // =================================================
-                // CREATE STUDENT
-                // =================================================
-
                 students.putIfAbsent(studentId, () {
                   return {
                     'name': studentName,
@@ -1518,10 +1461,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                     'absent': 0,
                   };
                 });
-
-                // =================================================
-                // COUNT
-                // =================================================
 
                 if (status == "Present") {
                   students[studentId]!['present'] =
@@ -1533,10 +1472,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                       (students[studentId]!['absent'] as int) + 1;
                 }
               }
-
-              // =================================================
-              // NO DATA FOR SELECTED MONTH
-              // =================================================
 
               if (students.isEmpty) {
                 return Center(
@@ -1566,20 +1501,12 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                 );
               }
 
-              // =================================================
-              // SORT STUDENTS
-              // =================================================
-
               final List<Map<String, dynamic>> studentList = students.values
                   .toList();
 
               studentList.sort(
                 (a, b) => a['roll'].toString().compareTo(b['roll'].toString()),
               );
-
-              // =================================================
-              // STUDENT LIST
-              // =================================================
 
               return ListView.builder(
                 padding: EdgeInsets.fromLTRB(
@@ -1615,9 +1542,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                     ),
                     child: Row(
                       children: [
-                        // =======================================
-                        // ROLL NUMBER
-                        // =======================================
                         CircleAvatar(
                           radius: 22,
                           backgroundColor: navy.withOpacity(.1),
@@ -1632,9 +1556,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
                         ),
                         const SizedBox(width: 12),
 
-                        // =======================================
-                        // STUDENT INFO
-                        // =======================================
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

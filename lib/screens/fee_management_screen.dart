@@ -333,9 +333,8 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
   // ---------------------------------------------------------------------------
   // BULK IMPORT
   // ---------------------------------------------------------------------------
-
-  Future<void> _pickFile() async {
-    setState(() {
+  Future<void> _pickFile(void Function(void Function()) setDialogState) async {
+    setDialogState(() {
       _isPicking = true;
       _parsedRows = [];
       _errorRows = [];
@@ -350,7 +349,9 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
       );
 
       if (result == null || result.files.isEmpty) {
-        if (mounted) setState(() => _isPicking = false);
+        setDialogState(() {
+          _isPicking = false;
+        });
         return;
       }
 
@@ -360,20 +361,26 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
         throw Exception('Unable to read the selected Excel file.');
       }
 
-      if (mounted) setState(() => _fileName = file.name);
-
       final bytes = Uint8List.fromList(file.bytes!);
-      await Future.delayed(Duration.zero);
-      _parseExcel(bytes);
+
+      setDialogState(() {
+        _fileName = file.name;
+      });
+
+      await _parseExcel(bytes, setDialogState);
     } catch (e) {
-      if (mounted) {
-        setState(() => _isPicking = false);
-        _showSnack('Error picking file: $e', isError: true);
-      }
+      setDialogState(() {
+        _isPicking = false;
+      });
+
+      _showSnack('Error picking file: $e', isError: true);
     }
   }
 
-  void _parseExcel(Uint8List bytes) {
+  Future<void> _parseExcel(
+    Uint8List bytes,
+    void Function(void Function()) setDialogState,
+  ) async {
     try {
       final excel = excelLib.Excel.decodeBytes(bytes);
 
@@ -385,8 +392,11 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
       final sheet = excel.tables[sheetName];
 
       if (sheet == null || sheet.rows.isEmpty) {
+        setDialogState(() {
+          _isPicking = false;
+        });
+
         _showSnack('Excel sheet is empty.', isError: true);
-        if (mounted) setState(() => _isPicking = false);
         return;
       }
 
@@ -394,10 +404,14 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
           .map((c) => c?.value?.toString().trim().toLowerCase() ?? '')
           .toList();
 
+      // Required columns check
       for (final col in _requiredColumns) {
         if (!headers.contains(col)) {
+          setDialogState(() {
+            _isPicking = false;
+          });
+
           _showSnack('Missing column: "$col"', isError: true);
-          if (mounted) setState(() => _isPicking = false);
           return;
         }
       }
@@ -408,6 +422,7 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
 
+        // Empty row skip
         if (row.every(
           (c) => c == null || (c.value?.toString().trim() ?? '').isEmpty,
         )) {
@@ -422,6 +437,7 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
           }
         }
 
+        // Required data validation
         if ((map['roll_no'] ?? '').isEmpty ||
             (map['student_name'] ?? '').isEmpty ||
             (map['class'] ?? '').isEmpty) {
@@ -432,25 +448,28 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
         rows.add(map);
       }
 
-      if (mounted) {
-        setState(() {
-          _parsedRows = rows;
-          _errorRows = errors;
-          _isPicking = false;
-        });
-      }
+      // IMPORTANT:
+      // Dialog ko rebuild karna hai
+      setDialogState(() {
+        _parsedRows = rows;
+        _errorRows = errors;
+        _isPicking = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() => _isPicking = false);
-        _showSnack('Parse error: $e', isError: true);
-      }
+      setDialogState(() {
+        _isPicking = false;
+      });
+
+      _showSnack('Parse error: $e', isError: true);
     }
   }
 
-  Future<void> _importToFirestore() async {
+  Future<void> _importToFirestore(
+    void Function(void Function()) setDialogState,
+  ) async {
     if (_parsedRows.isEmpty || _isImporting) return;
 
-    setState(() {
+    setDialogState(() {
       _isImporting = true;
       _importProgress = 0;
       _importTotal = _parsedRows.length;
@@ -470,6 +489,7 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
           .toSet();
 
       const batchSize = 499;
+
       int imported = 0;
       int skipped = 0;
 
@@ -483,14 +503,18 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
 
         for (int ci = 0; ci < chunk.length; ci++) {
           final row = chunk[ci];
+
           final rollNo = (row['roll_no'] ?? '').trim();
 
           if (rollNo.isEmpty || existingRollNos.contains(rollNo)) {
             skipped++;
           } else {
             final schoolFee = _number(row['school_fee'] ?? '0');
+
             final acCharges = _number(row['ac_charges'] ?? '0');
+
             final stationaryFee = _number(row['stationary_fee'] ?? '0');
+
             final totalFee = schoolFee + acCharges + stationaryFee;
 
             final className = (row['class'] ?? '').trim();
@@ -499,10 +523,17 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
               'roll_no': rollNo,
               'student_name': (row['student_name'] ?? '').trim(),
               'father_name': (row['father_name'] ?? '').trim(),
+
+              // class is the main field
               'class': className,
+
+              // grade kept for compatibility
               'grade': className,
+
               'student_id': null,
+
               'created_at': FieldValue.serverTimestamp(),
+
               'fees': {
                 'school_fee': schoolFee,
                 'ac_charges': acCharges,
@@ -515,9 +546,11 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
             imported++;
           }
 
-          if (mounted) {
-            setState(() => _importProgress = i + ci + 1);
-          }
+          // IMPORTANT:
+          // Dialog progress update
+          setDialogState(() {
+            _importProgress = i + ci + 1;
+          });
         }
 
         await batch.commit();
@@ -525,18 +558,19 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
 
       await _loadFirstPage();
 
-      if (mounted) {
-        setState(() {
-          _isImporting = false;
-          _importedCount = imported;
-          _skippedCount = skipped;
-        });
-      }
+      setDialogState(() {
+        _isImporting = false;
+        _importedCount = imported;
+        _skippedCount = skipped;
+      });
+
+      _showSnack('Import completed: $imported imported, $skipped skipped.');
     } catch (e) {
-      if (mounted) {
-        setState(() => _isImporting = false);
-        _showSnack('Import failed: $e', isError: true);
-      }
+      setDialogState(() {
+        _isImporting = false;
+      });
+
+      _showSnack('Import failed: $e', isError: true);
     }
   }
 
@@ -561,17 +595,23 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
-            // Keep the parent state as the source of truth. This also lets
-            // progress update while the dialog is open.
+            final screenHeight = MediaQuery.of(ctx).size.height;
+            final screenWidth = MediaQuery.of(ctx).size.width;
+
             return AlertDialog(
+              insetPadding: EdgeInsets.symmetric(
+                horizontal: screenWidth < 600 ? 12 : 40,
+                vertical: 20,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
               titlePadding: EdgeInsets.zero,
-              contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+
               title: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
+                  horizontal: 16,
                   vertical: 14,
                 ),
                 decoration: const BoxDecoration(
@@ -589,6 +629,7 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
                       size: 19,
                     ),
                     const SizedBox(width: 8),
+
                     const Expanded(
                       child: Text(
                         'Bulk Import Students',
@@ -599,6 +640,7 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
                         ),
                       ),
                     ),
+
                     IconButton(
                       onPressed: _isImporting
                           ? null
@@ -615,12 +657,24 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
                   ],
                 ),
               ),
+
+              // IMPORTANT:
+              // Mobile par dialog ki maximum height screen ke andar rahegi.
               content: SizedBox(
-                width: 760,
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: _bulkDialogContent(ctx),
+                width: screenWidth < 600 ? double.infinity : 760,
+                height: screenHeight * 0.70,
+
+                child: Scrollbar(
+                  thumbVisibility: screenWidth >= 600,
+
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 16),
+
+                      child: _bulkDialogContent(ctx, setDialogState),
+                    ),
                   ),
                 ),
               ),
@@ -631,7 +685,10 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
     );
   }
 
-  Widget _bulkDialogContent(BuildContext dialogContext) {
+  Widget _bulkDialogContent(
+    BuildContext dialogContext,
+    void Function(void Function()) setDialogState,
+  ) {
     if (_isImporting) {
       final pct = _importTotal == 0 ? 0.0 : _importProgress / _importTotal;
 
@@ -685,16 +742,12 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
                 .toList(),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'DOB, Security Fee and Transport Fee are not used.',
-            style: TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
-          ),
-          const SizedBox(height: 18),
+
           SizedBox(
             width: double.infinity,
             height: 46,
             child: ElevatedButton.icon(
-              onPressed: _isPicking ? null : _pickFile,
+              onPressed: _isPicking ? null : () => _pickFile(setDialogState),
               icon: _isPicking
                   ? const SizedBox(
                       width: 18,
@@ -722,20 +775,6 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Preview — ${_parsedRows.length} rows',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            TextButton(onPressed: _resetImport, child: const Text('Clear')),
-          ],
-        ),
         if (_fileName != null) ...[
           Text(
             _fileName!,
@@ -813,7 +852,9 @@ class _BulkImportStudentsScreenState extends State<BulkImportStudentsScreen> {
           width: double.infinity,
           height: 48,
           child: ElevatedButton.icon(
-            onPressed: _importToFirestore,
+            onPressed: _isImporting
+                ? null
+                : () => _importToFirestore(setDialogState),
             icon: const Icon(Icons.cloud_upload_outlined, size: 19),
             label: Text(
               'Import ${_parsedRows.length} Students',

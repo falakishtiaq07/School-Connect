@@ -8,23 +8,12 @@ class UnreadService {
 
   static final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // ============================================================
-  // ANNOUNCEMENTS
-  // ============================================================
-
   static Future<bool> hasUnreadAnnouncements() async {
     final user = _auth.currentUser;
 
     if (user == null) return false;
 
     try {
-      // --------------------------------------------------------
-      // Students + Teachers announcements
-      //
-      // Agar announcement students ke liye hai YA teachers
-      // ke liye hai, usko unread consider kiya jayega.
-      // --------------------------------------------------------
-
       final studentsSnapshot = await _firestore
           .collection('announcements')
           .where('students', isEqualTo: true)
@@ -35,7 +24,6 @@ class UnreadService {
           .where('teachers', isEqualTo: true)
           .get();
 
-      // Dono snapshots ke documents combine kar rahe hain.
       final Map<String, DocumentSnapshot> announcements = {};
 
       for (final doc in studentsSnapshot.docs) {
@@ -50,7 +38,6 @@ class UnreadService {
         return false;
       }
 
-      // ReadStatusService same read tracking use karega.
       final readIds = await ReadStatusService.getReadIds(type: 'announcement');
 
       return announcements.values.any((doc) => !readIds.contains(doc.id));
@@ -59,10 +46,6 @@ class UnreadService {
       return false;
     }
   }
-
-  // ============================================================
-  // MONTHLY REPORTS
-  // ============================================================
 
   static Future<bool> hasUnreadReports() async {
     final user = _auth.currentUser;
@@ -103,10 +86,6 @@ class UnreadService {
     }
   }
 
-  // ============================================================
-  // HOMEWORK
-  // ============================================================
-
   static Future<bool> hasUnreadHomework() async {
     final user = _auth.currentUser;
 
@@ -135,10 +114,6 @@ class UnreadService {
     }
   }
 
-  // ============================================================
-  // ATTENDANCE ALERTS
-  // ============================================================
-
   static Future<bool> hasUnreadAttendanceAlerts() async {
     final user = _auth.currentUser;
 
@@ -160,17 +135,9 @@ class UnreadService {
     }
   }
 
-  // ============================================================
-  // CHALLANS
-  // ============================================================
-
   static Future<bool> hasUnreadChallans() async {
     return false;
   }
-
-  // ============================================================
-  // VERIFY CHALLAN
-  // ============================================================
 
   static Future<bool> hasUnreadVerifyChallan() async {
     try {
@@ -193,9 +160,6 @@ class UnreadService {
       return false;
     }
   }
-  // ============================================================
-  // COMPLAINTS
-  // ============================================================
 
   static Future<bool> hasUnreadComplaints() async {
     final user = _auth.currentUser;
@@ -216,17 +180,12 @@ class UnreadService {
     }
   }
 
-  // ============================================================
-  // TEACHER LEAVES
-  // ============================================================
-
   static Future<bool> _hasUnreadLeaves() async {
     final user = _auth.currentUser;
 
     if (user == null) return false;
 
     try {
-      // Teacher ki class get karein
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) return false;
@@ -242,7 +201,6 @@ class UnreadService {
           .where('class', isEqualTo: teacherClass)
           .get();
 
-      // teacherRead true nahi hai = unread/new request
       return snapshot.docs.any((doc) {
         final data = doc.data();
         return data['teacherRead'] != true;
@@ -253,49 +211,22 @@ class UnreadService {
     }
   }
 
-  // ============================================================
-  // ALL DASHBOARD STATUS
-  // ============================================================
-  //
-  // IMPORTANT:
-  // Is method ka naam SAME rakha gaya hai:
-  //
-  // getUnreadStatus()
-  //
-  // Aapke existing Student Dashboard mein jo call hai:
-  //
-  // UnreadService.getUnreadStatus()
-  //
-  // woh change nahi karna.
-  //
-  // Teacher Dashboard bhi isi method ko call karega.
-  //
-  // ============================================================
-
   static Future<Map<String, bool>> getUnreadStatus() async {
     final results = await Future.wait([
-      // 0
       hasUnreadAnnouncements(),
 
-      // 1
       hasUnreadReports(),
 
-      // 2
       hasUnreadAttendanceAlerts(),
 
-      // 3
       hasUnreadChallans(),
 
-      // 4
       hasUnreadVerifyChallan(),
 
-      // 5
       hasUnreadHomework(),
 
-      // 6
       hasUnreadComplaints(),
 
-      // 7
       _hasUnreadLeaves(),
     ]);
 

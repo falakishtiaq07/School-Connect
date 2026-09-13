@@ -15,7 +15,6 @@ class AdminLoginScreen extends StatefulWidget {
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  // 1. Ek variable banaya jo track rakhega ke password chhupana hai ya dikhana hai
   bool _isPasswordHidden = true;
 
   @override
@@ -25,13 +24,12 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- TOP CURVED CURTAIN BACKGROUND ---
             ClipPath(
               clipper: LoginHeaderClipper(),
               child: Container(
                 height: 240,
                 width: double.infinity,
-                color: const Color(0xFF1E3A5F), // Global primary blue color
+                color: const Color(0xFF1E3A5F),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -60,12 +58,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
             const SizedBox(height: 40),
 
-            // --- INPUT FIELDS & LOGIN BUTTON ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
               child: Column(
                 children: [
-                  // Email Input Field
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -78,16 +74,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Password Input Field
                   TextField(
                     controller: passwordController,
-                    obscureText:
-                        _isPasswordHidden, // Variable text ko hide/show karega
+                    obscureText: _isPasswordHidden,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.lock_outline),
                       hintText: 'Password',
                       border: const OutlineInputBorder(),
-                      // 🌟 EYE ICON TOGGLE LOGIC:
                       suffixIcon: IconButton(
                         icon: Icon(
                           _isPasswordHidden
@@ -104,10 +97,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Forgot Password Link// Forgot Password Link (Right Aligned)
                   Align(
-                    alignment: Alignment
-                        .centerRight, // Is se text right side par chala jaye ga
+                    alignment: Alignment.centerRight,
                     child: GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -124,8 +115,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                           color: Color(0xFF1D4ED8),
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
-                          decoration: TextDecoration
-                              .underline, // Text ke niche line ke liye
+                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
@@ -133,26 +123,21 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
                   const SizedBox(height: 30),
 
-                  // Login Button (ElevatedButton)
                   SizedBox(
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF1E3A5F),
-                        foregroundColor: Colors.white, // Text color white
+                        foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            12,
-                          ), // Premium rounded corners
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       onPressed: () async {
-                        // 1. Controllers se text uthayein aur extra spaces khatam (trim) karein
                         String email = emailController.text.trim();
                         String password = passwordController.text.trim();
 
-                        // 2. Input Validation (Agar fields khali hon)
                         if (email.isEmpty || password.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -164,9 +149,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                           return;
                         }
 
-                        // 3. 🌟 REAL FIREBASE LOGIN LOGIC WITH ROLE CHECK
                         try {
-                          // Firebase auth ko call kr k sign in krwana
                           final credential = await FirebaseAuth.instance
                               .signInWithEmailAndPassword(
                                 email: email,
@@ -176,7 +159,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                           String? uid = credential.user?.uid;
 
                           if (uid != null) {
-                            // 🔥 FIRESTORE SE ROLE VERIFY KAREIN
                             DocumentSnapshot userDoc = await FirebaseFirestore
                                 .instance
                                 .collection('users')
@@ -207,7 +189,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                                     "Connected successfully! Admin UID: $uid",
                                   );
 
-                                  // Dashboard ka route yahan open kar dein
                                   Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute(
@@ -217,7 +198,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                                   );
                                 }
                               } else {
-                                // Toh foran Auth session se sign out karwadein taake login block ho jaye
                                 await FirebaseAuth.instance.signOut();
 
                                 if (context.mounted) {
@@ -233,7 +213,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                                 }
                               }
                             } else {
-                              // Agar Auth mein user hai par Firestore database mein uska record nahi mila
                               await FirebaseAuth.instance.signOut();
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -249,7 +228,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                             }
                           }
                         } on FirebaseAuthException catch (e) {
-                          // ❌ Agar Firebase ki taraf se koi error aaye (Wrong password, User not found wagerah)
                           String errorMessage =
                               'An error occurred. Please try again.';
 
@@ -274,7 +252,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                             );
                           }
                         } catch (e) {
-                          // Kisi bhi aur qism k error k liye
                           print(e.toString());
                         }
                       },
@@ -290,12 +267,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                   ),
                   const SizedBox(height: 25),
 
-                  // Go Back Navigation Option
                   TextButton.icon(
                     onPressed: () {
-                      Navigator.pop(
-                        context,
-                      ); // Wapas welcome screen par le jayega
+                      Navigator.pop(context);
                     },
                     icon: const Icon(
                       Icons.arrow_back,
@@ -317,7 +291,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   }
 }
 
-// Custom Clipper Class jo background ko wave/curtain cut deti hai
 class LoginHeaderClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {

@@ -25,9 +25,6 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
   static const _bg = Color(0xFFF8FAFC);
   static const _white = Colors.white;
   int selectedTab = 0;
-  // ══════════════════════════════════════════════════════════════════════════
-  // LOGIC — UNTOUCHED
-  // ══════════════════════════════════════════════════════════════════════════
 
   final titleController = TextEditingController();
   final descController = TextEditingController();
@@ -103,10 +100,6 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      /// --------------------------------------------------------
-      /// NOTIFICATION — sirf jo audience actually select ki gayi ho,
-      /// aur tag filters ki jagah exact uid list se (reliable).
-      /// --------------------------------------------------------
       try {
         final List<String> recipientUids = [];
 
@@ -137,8 +130,6 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
           notificationType: 'announcement',
         );
       } catch (notificationError) {
-        // Announcement Firestore mein save ho chuka hai — notification
-        // fail hone par bhi poora flow crash/error nahi dikhana chahiye.
         debugPrint('NOTIFICATION ERROR: $notificationError');
       }
 
@@ -172,10 +163,6 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
     }
     if (mounted) setState(() => isLoading = false);
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -371,10 +358,6 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// FORM CARD
-// ══════════════════════════════════════════════════════════════════════════════
-
 class _FormCard extends StatelessWidget {
   final TextEditingController titleController;
   final TextEditingController descController;
@@ -424,7 +407,6 @@ class _FormCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Card header ─────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
             decoration: const BoxDecoration(
@@ -474,13 +456,11 @@ class _FormCard extends StatelessWidget {
             ),
           ),
 
-          // ── Form body ───────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title
                 _fieldLabel('Title', required: true),
                 const SizedBox(height: 6),
                 TextField(
@@ -493,7 +473,6 @@ class _FormCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // Description
                 _fieldLabel('Description', required: true),
                 const SizedBox(height: 6),
                 TextField(
@@ -507,7 +486,6 @@ class _FormCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // ── Audience ──────────────────────────────────────────────
                 _fieldLabel('Audience', required: true),
                 const SizedBox(height: 4),
                 const Text(
@@ -540,7 +518,6 @@ class _FormCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // ── Attachment ────────────────────────────────────────────
                 _fieldLabel('Attachment', required: false),
                 const SizedBox(height: 6),
                 InkWell(
@@ -624,7 +601,6 @@ class _FormCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 22),
 
-                // ── Post button ───────────────────────────────────────────
                 SizedBox(
                   width: double.infinity,
                   height: 50,
@@ -665,7 +641,6 @@ class _FormCard extends StatelessWidget {
     );
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
   static Widget _fieldLabel(String text, {bool required = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -715,8 +690,6 @@ class _FormCard extends StatelessWidget {
         fillColor: const Color(0xFFF9FAFB),
       );
 }
-
-// ── Audience tile ─────────────────────────────────────────────────────────────
 
 class _AudienceTile extends StatelessWidget {
   final IconData icon;
@@ -778,10 +751,6 @@ class _AudienceTile extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// POSTED LIST
-// ══════════════════════════════════════════════════════════════════════════════
-
 class _PostedList extends StatelessWidget {
   final bool isWide;
 
@@ -814,7 +783,6 @@ class _PostedList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Section header ─────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
             decoration: const BoxDecoration(
@@ -864,21 +832,18 @@ class _PostedList extends StatelessWidget {
             ),
           ),
 
-          // ── Stream ─────────────────────────────────────────────────────
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('announcements')
                 .orderBy('createdAt', descending: true)
                 .snapshots(),
             builder: (context, snapshot) {
-              // Loading
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 48),
                   child: Center(child: CircularProgressIndicator(color: _navy)),
                 );
               }
-              // Error
               if (snapshot.hasError) {
                 return Padding(
                   padding: const EdgeInsets.all(32),
@@ -902,7 +867,6 @@ class _PostedList extends StatelessWidget {
                   ),
                 );
               }
-              // Empty
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 48),
@@ -977,8 +941,6 @@ class _PostedList extends StatelessWidget {
   }
 }
 
-// ── Single announcement row ───────────────────────────────────────────────────
-
 class _AnnouncementRow extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId, dateStr;
@@ -1000,7 +962,6 @@ class _AnnouncementRow extends StatelessWidget {
     required this.context,
   });
 
-  // View dialog — logic
   void _showView(BuildContext ctx) {
     showDialog(
       context: ctx,
@@ -1134,7 +1095,6 @@ class _AnnouncementRow extends StatelessWidget {
     );
   }
 
-  // Delete dialog — logic unchanged
   void _showDelete(BuildContext ctx) {
     showDialog(
       context: ctx,
@@ -1194,12 +1154,10 @@ class _AnnouncementRow extends StatelessWidget {
           ),
           const SizedBox(width: 14),
 
-          // Content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title
                 Text(
                   data['title'] ?? '',
                   style: const TextStyle(
@@ -1228,7 +1186,6 @@ class _AnnouncementRow extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                // Audience badges
                 Wrap(
                   spacing: 6,
                   runSpacing: 4,
@@ -1242,7 +1199,6 @@ class _AnnouncementRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
 
-          // Actions
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1266,7 +1222,6 @@ class _AnnouncementRow extends StatelessWidget {
     );
   }
 
-  // Pill badge
   Widget _badge(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -1286,7 +1241,6 @@ class _AnnouncementRow extends StatelessWidget {
     );
   }
 
-  // Rounded icon action button
   Widget _actionBtn({
     required IconData icon,
     required Color color,

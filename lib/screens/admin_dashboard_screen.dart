@@ -28,13 +28,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   static const _bg = Color(0xFFF0F4F8);
   static const _white = Colors.white;
 
-  // ── Unread Status ──────────────────────────────────────────────────────────
   Map<String, bool> _unreadStatus = {
     'complaints': false,
     'verifyChallan': false,
   };
 
-  // ── Load Unread Status ─────────────────────────────────────────────────────
   Future<void> _loadUnreadStatus() async {
     try {
       final status = await UnreadService.getUnreadStatus();
@@ -49,14 +47,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  // ── Init ───────────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
     _loadUnreadStatus();
   }
 
-  // ── Cards ─────────────────────────────────────────────────────────────────
   List<_CardData> get _cards => [
     _CardData(
       icon: Icons.people_alt_outlined,
@@ -80,7 +76,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     ),
 
-    // ── Complaints ────────────────────────────────────────────────────────
     _CardData(
       icon: Icons.assignment_late_outlined,
       title: 'Complaints',
@@ -116,7 +111,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     ),
 
-    // ── Verify Challan ────────────────────────────────────────────────────
     _CardData(
       icon: Icons.verified_user_outlined,
       title: 'Verify Challan',
@@ -129,13 +123,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           MaterialPageRoute(builder: (_) => const AdminVerifyChallanScreen()),
         );
 
-        // Refresh unread status after returning
         await _loadUnreadStatus();
       },
     ),
   ];
 
-  // ── Logout Dialog ──────────────────────────────────────────────────────────
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -193,7 +185,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Challan Bottom Sheet ───────────────────────────────────────────────────
   void _showChallanBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -324,10 +315,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -376,7 +363,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
                     const SizedBox(height: 24),
 
-                    // ── Responsive Cards ────────────────────────────────
                     if (isMobile)
                       ListView.builder(
                         shrinkWrap: true,
@@ -412,7 +398,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(bool isMobile) {
     final statusBarHeight = MediaQuery.of(context).padding.top;
 
@@ -619,7 +604,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Drawer ────────────────────────────────────────────────────────────────
   Widget _buildDrawer() {
     return Drawer(
       backgroundColor: _white,
@@ -751,7 +735,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Grid Card ─────────────────────────────────────────────────────────────
   Widget _buildGridCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -872,7 +855,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ── Mobile Card ────────────────────────────────────────────────────────────
   Widget _buildMobileCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -998,7 +980,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 }
 
-// ── Data Model ────────────────────────────────────────────────────────────────
 class _CardData {
   final IconData icon;
   final String title;

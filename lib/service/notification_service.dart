@@ -3,17 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class NotificationService {
-  // ============================================================
-  // ONESIGNAL CONFIG
-  // ============================================================
-
   static const String oneSignalAppId = "ed2a3db5-57d7-4e79-a39b-fe367eaa8c55";
+  static const String restApiKey =
+      "os_v2_app_5uvd3nkx25hhti437y3h5kumku6wxmppzgfebnvgwbbbbkpkoqzqrvkk2pve3rnqxtp5fjn47j6ya43eyfxuilzhn22f5t3rppxh5ra";
 
   static const String _sendUrl = "https://api.onesignal.com/notifications";
-
-  // ============================================================
-  // SEND PUSH TO SPECIFIC USER (single external_id)
-  // ============================================================
 
   static Future<void> sendPushToUser({
     required String title,
@@ -67,13 +61,6 @@ class NotificationService {
     await _send(payload);
   }
 
-  // ============================================================
-  // SEND PUSH TO A LIST OF SPECIFIC USERS (recommended — reliable)
-  // ============================================================
-  // Tag `filters` OneSignal ka ek known-unreliable targeting method hai.
-  // Jahan bhi possible ho, Firestore se matching users ke uid nikaal kar
-  // yehi method use karein.
-
   static Future<void> sendPushToUsers({
     required List<String> userIds,
     required String title,
@@ -100,10 +87,6 @@ class NotificationService {
       "data": {"type": notificationType, "relatedId": relatedId ?? ""},
     });
   }
-
-  // ============================================================
-  // SEND PUSH TO ROLE (tag filters — kept for backward compatibility)
-  // ============================================================
 
   static Future<void> sendPushNotification({
     required String targetRole,
@@ -139,10 +122,6 @@ class NotificationService {
     });
   }
 
-  // ============================================================
-  // TEST HELPERS
-  // ============================================================
-
   static Future<void> sendTestToStudents() async {
     await sendPushNotification(
       targetRole: "student",
@@ -164,10 +143,6 @@ class NotificationService {
     );
   }
 
-  // ============================================================
-  // INTERNAL SEND METHOD
-  // ============================================================
-
   static Future<void> _send(Map<String, dynamic> payload) async {
     try {
       debugPrint("================================================");
@@ -177,7 +152,10 @@ class NotificationService {
 
       final response = await http.post(
         Uri.parse(_sendUrl),
-        headers: {"Content-Type": "application/json"},
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "key $restApiKey",
+        },
         body: jsonEncode(payload),
       );
 
