@@ -452,7 +452,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                 } catch (e) {
                                   if (!mounted) return;
 
-                                  // Loading dialog close
                                   Navigator.pop(context);
 
                                   ScaffoldMessenger.of(context).showSnackBar(

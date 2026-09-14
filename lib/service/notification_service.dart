@@ -4,11 +4,10 @@ import 'package:http/http.dart' as http;
 
 class NotificationService {
   static const String oneSignalAppId = "ed2a3db5-57d7-4e79-a39b-fe367eaa8c55";
-  static const String restApiKey =
-      "os_v2_app_5uvd3nkx25hhti437y3h5kumku6wxmppzgfebnvgwbbbbkpkoqzqrvkk2pve3rnqxtp5fjn47j6ya43eyfxuilzhn22f5t3rppxh5ra";
 
   static const String _sendUrl =
       "https://admin-backend-six-delta.vercel.app/api/send_push";
+
   static Future<void> sendPushToUser({
     required String title,
     required String body,
@@ -19,7 +18,6 @@ class NotificationService {
     String? relatedId,
   }) async {
     final Map<String, dynamic> payload = {
-      "app_id": oneSignalAppId,
       "target_channel": "push",
       "headings": {"en": title},
       "contents": {"en": body},
@@ -79,7 +77,6 @@ class NotificationService {
     }
 
     await _send({
-      "app_id": oneSignalAppId,
       "target_channel": "push",
       "include_aliases": {"external_id": cleanIds},
       "headings": {"en": title},
@@ -113,7 +110,6 @@ class NotificationService {
     }
 
     await _send({
-      "app_id": oneSignalAppId,
       "target_channel": "push",
       "headings": {"en": title},
       "contents": {"en": body},
@@ -150,10 +146,7 @@ class NotificationService {
 
       final response = await http.post(
         Uri.parse(_sendUrl),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "key $restApiKey",
-        },
+        headers: {"Content-Type": "application/json"},
         body: jsonEncode(payload),
       );
 

@@ -21,34 +21,26 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   static const _green = Color(0xFF28A745);
   static const _bgColor = Color(0xFFF5F7FA);
 
-  // ── Step 1 ────────────────────────────────────────────────────────────────
   String? _selectedGrade;
   bool _isLoadingStudents = false;
 
-  // Classes are read live from `users` (role == Student) — the same single
-  // source of truth every other screen in the app now uses. No hardcoded
-  // 1–10 list, so a class only shows up here while it actually has students.
   List<String> _availableGrades = [];
   bool _isLoadingGrades = true;
 
   String? get _dropdownSafeGrade =>
       _availableGrades.contains(_selectedGrade) ? _selectedGrade : null;
 
-  // ── Step 2: Dates + Month only (no fee rows) ──────────────────────────────
   String _selectedMonth = _currentMonthYear();
   DateTime _issueDate = DateTime.now();
   DateTime _dueDate = DateTime.now().add(const Duration(days: 15));
   DateTime _validTill = DateTime.now().add(const Duration(days: 30));
 
-  // ── Step 3 ────────────────────────────────────────────────────────────────
   List<Map<String, dynamic>> _students = [];
   Set<int> _selectedIndexes = {};
   bool _selectAll = true;
-  // Students found in `users` for this class but skipped because no
-  // matching `student_profile` fee record exists.
+
   List<String> _skippedNoProfile = [];
 
-  // ── Generation ────────────────────────────────────────────────────────────
   bool _isGenerating = false;
   int _genProgress = 0;
   int _genTotal = 0;
@@ -56,7 +48,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   int _genSuccess = 0;
   int _genSaved = 0;
   List<String> _genSkipped = [];
-  // Per-student status for save dialog
   List<_ChallanSaveResult> _saveResults = [];
 
   @override
@@ -103,7 +94,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     return months.map((m) => '$m-$year').toList();
   }();
 
-  // ── Load classes from users ────────────────────────────────────────────────
   Future<void> _fetchGradesFromUsers() async {
     try {
       final snap = await FirebaseFirestore.instance
@@ -132,7 +122,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     }
   }
 
-  // ── Load students ─────────────────────────────────────────────────────────
   Future<void> _loadStudents() async {
     if (_selectedGrade == null) {
       _showSnack('Please select a Grade first.', isError: true);
@@ -147,17 +136,12 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
       _skippedNoProfile = [];
     });
     try {
-      // 1. Roster comes from `users` — the same collection Manage Users,
-      //    Promote, and Generate Challan already treat as the source of
-      //    truth for who's actually enrolled in a class right now.
       final usersSnap = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'Student')
           .where('class', isEqualTo: _selectedGrade)
           .get();
 
-      // 2. Fee data comes from `student_profile`, matched in-memory by
-      //    roll_no — one query instead of one lookup per student.
       final profileSnap = await FirebaseFirestore.instance
           .collection('student_profile')
           .where('grade', isEqualTo: _selectedGrade)
@@ -239,7 +223,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     }
   }
 
-  // ── Date picker ───────────────────────────────────────────────────────────
   Future<void> _pickDate(String type) async {
     final init = type == 'issue'
         ? _issueDate
@@ -288,7 +271,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     return '${d.day.toString().padLeft(2, '0')}-${abbr[d.month - 1]}-${d.year}';
   }
 
-  // ── Cloudinary upload helper ─────────────────────────────────────────────
   Future<String?> _uploadToCloudinary(Uint8List pdfBytes, String rollNo) async {
     const cloudName = 'dkjsza6pw'; // ← apna Cloudinary cloud name
     const uploadPreset = 'challans-pdf'; // ← unsigned upload preset
@@ -317,7 +299,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     return null;
   }
 
-  // ── Bulk PDF generation — separate PDF per student → Cloudinary → Firestore
   Future<void> _generateBulkChallans() async {
     final selected = _selectedIndexes.toList()..sort();
 
@@ -326,7 +307,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
       return;
     }
 
-    // Load school settings
     String schoolName = 'Your School Name';
     String schoolAddress = 'School Address';
     String schoolPhone = '000-0000000';
@@ -371,11 +351,8 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
 
         final fatherName = student['father_name']?.toString() ?? '';
 
-        // IMPORTANT:
-        // users collection mein class field use ho rahi hai.
         final className = student['class']?.toString() ?? _selectedGrade ?? '';
 
-        // Fees nested map safely extract
         final feesRaw = student['fees'];
 
         final fees = feesRaw is Map
@@ -419,7 +396,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           studentName: name,
           fatherName: fatherName,
 
-          // IMPORTANT
           classSection: className,
 
           month: _selectedMonth,
@@ -429,18 +405,12 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           feeParticulars: studentFees,
         );
 
-        // ─────────────────────────────
-        // 1. Generate PDF
-        // ─────────────────────────────
         final singlePdf = pw.Document();
 
         ChallanPdfService.addChallanPage(singlePdf, challanData);
 
         final pdfBytes = await singlePdf.save();
 
-        // ─────────────────────────────
-        // 2. Upload to Cloudinary
-        // ─────────────────────────────
         String? pdfUrl;
 
         try {
@@ -470,19 +440,8 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           continue;
         }
 
-        // ─────────────────────────────
-        // 3. Create challan reference
-        // ─────────────────────────────
-        //
-        // IMPORTANT:
-        // challanRef ko try ke BAHAR declare kiya hai
-        // taake neeche notification mein bhi use ho sake.
-        //
         final challanRef = fs.collection('challans').doc();
 
-        // ─────────────────────────────
-        // 4. Save challan to Firestore
-        // ─────────────────────────────
         try {
           await challanRef.set({
             'challanNo': challanNo,
@@ -490,7 +449,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
             'studentName': name,
             'rollNo': rollNo,
 
-            // users collection ka class
             'classSection': className,
 
             'month': _selectedMonth,
@@ -527,9 +485,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           continue;
         }
 
-        // ─────────────────────────────
-        // 5. Notify ONLY this student
-        // ─────────────────────────────
         try {
           await NotificationService.sendPushToUser(
             targetUserId: uid,
@@ -539,7 +494,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                 'Total: Rs. ${totalAmount.toStringAsFixed(0)}.',
             notificationType: 'fee_challan',
 
-            // Ab challanRef scope mein available hai
             relatedId: challanRef.id,
           );
         } catch (notificationError) {
@@ -549,9 +503,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           );
         }
 
-        // ─────────────────────────────
-        // 6. Success
-        // ─────────────────────────────
         _genSaved++;
 
         _saveResults.add(
@@ -571,8 +522,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
 
         await Future.delayed(const Duration(milliseconds: 20));
       } catch (e, st) {
-        // Kisi bhi unexpected error ki wajah se
-        // poora bulk generation stuck nahi hoga.
         debugPrint('BULK CHALLAN ERROR at index $idx: $e');
 
         debugPrintStack(stackTrace: st);
@@ -589,9 +538,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
       }
     }
 
-    // ─────────────────────────────
-    // Generation complete
-    // ─────────────────────────────
     if (mounted) {
       setState(() {
         _isGenerating = false;
@@ -621,10 +567,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
       ),
     );
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -691,7 +633,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     );
   }
 
-  // ── Step 1: Grade ─────────────────────────────────────────────────────────
   Widget _step1Card() {
     return _card(
       stepNo: '1',
@@ -750,7 +691,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     );
   }
 
-  // ── Step 2: Month + Dates only (no fee particulars) ───────────────────────
   Widget _step2Card() {
     return _card(
       stepNo: '2',
@@ -779,7 +719,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
           const SizedBox(height: 8),
           _dateTile('Valid Till', _fmtDate(_validTill), 'valid'),
           const SizedBox(height: 12),
-          // Info box — fee auto from backend
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -809,7 +748,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     );
   }
 
-  // ── Step 3: Students List ─────────────────────────────────────────────────
   Widget _step3Card() {
     return _card(
       stepNo: '3',
@@ -906,7 +844,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            // Student list
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -917,7 +854,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                 final s = _students[i];
                 final isSelected = _selectedIndexes.contains(i);
 
-                // Fee from backend
                 final feesRaw = s['fees'];
                 final fees = feesRaw is Map
                     ? Map<String, dynamic>.from(feesRaw)
@@ -981,7 +917,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
                             ],
                           ),
                         ),
-                        // Roll No chip
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -1067,7 +1002,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     );
   }
 
-  // ── Result card ───────────────────────────────────────────────────────────
   Widget _resultCard() {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1150,7 +1084,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
             ),
           ],
           const SizedBox(height: 20),
-          // Saved count info
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -1228,7 +1161,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     );
   }
 
-  // ── Generating overlay ────────────────────────────────────────────────────
   Widget _generatingOverlay() {
     final pct = _genTotal > 0 ? _genProgress / _genTotal : 0.0;
     return Center(
@@ -1297,7 +1229,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
     );
   }
 
-  // ── Reusable helpers ──────────────────────────────────────────────────────
   Widget _card({
     required String stepNo,
     required String title,
@@ -1478,10 +1409,6 @@ class _BulkGenerateChallanScreenState extends State<BulkGenerateChallanScreen> {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Model: result of saving one student's challan
-// ═══════════════════════════════════════════════════════════════════════════
-
 class _ChallanSaveResult {
   final String rollNo;
   final String name;
@@ -1494,10 +1421,6 @@ class _ChallanSaveResult {
     required this.success,
   });
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Save Results Dialog — shows per-student save status with roll_no verification
-// ═══════════════════════════════════════════════════════════════════════════
 
 class _SaveResultsDialog extends StatelessWidget {
   final List<_ChallanSaveResult> results;
@@ -1613,7 +1536,6 @@ class _SaveResultsDialog extends StatelessWidget {
                     ),
                     subtitle: Row(
                       children: [
-                        // Roll No verified badge
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 6,
@@ -1653,7 +1575,6 @@ class _SaveResultsDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            // Info note
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(

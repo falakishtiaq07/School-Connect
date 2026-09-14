@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 class OneSignalService {
-  static const String appId = 'ed2a3db5-57d7-4e79-a39b-fe367eaa8c55';
-
   static bool _sdkInitialized = false;
   static String? _lastConfiguredUid;
 
@@ -19,7 +17,6 @@ class OneSignalService {
     }
 
     OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-    OneSignal.initialize(appId);
 
     OneSignal.Notifications.addForegroundWillDisplayListener((event) {
       event.notification.display();

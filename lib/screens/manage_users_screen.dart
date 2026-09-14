@@ -21,10 +21,6 @@ String? getNextClass(String currentClass) {
   return '${currentNum + 1}$suffix';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MANAGE USERS SCREEN
-// ═══════════════════════════════════════════════════════════════════════════
-
 class ManageUsersScreen extends StatefulWidget {
   const ManageUsersScreen({super.key});
   @override
@@ -33,7 +29,6 @@ class ManageUsersScreen extends StatefulWidget {
 
 class _ManageUsersScreenState extends State<ManageUsersScreen>
     with SingleTickerProviderStateMixin {
-  // ── Theme ──────────────────────────────────────────────────────────────────
   static const _navy = Color(0xFF1E3A5F);
   static const _accent = Color(0xFF2E86AB);
   static const _green = Color(0xFF28A745);
@@ -44,14 +39,12 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
 
   late final TabController _tab = TabController(length: 3, vsync: this);
 
-  // ── Import state ───────────────────────────────────────────────────────────
   bool _isImporting = false;
   int _importProgress = 0;
   int _importTotal = 0;
   int _importedCount = 0;
   List<String> _skipped = [];
 
-  // ── Promote state ──────────────────────────────────────────────────────────
   String? _promoteClass;
   List<DocumentSnapshot> _promoteStudents = [];
   Set<String> _promoteSelected = {};
@@ -95,10 +88,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     final classes = await _fetchAllStudentClasses();
     if (mounted) setState(() => _promoteClasses = classes);
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // IMPORT LOGIC
-  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _pickFile() async {
     final res = await FilePicker.pickFiles(
@@ -146,10 +135,8 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       final UserCredential credential = await tempAuth
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      // Verification email send karo
       await credential.user!.sendEmailVerification();
 
-      // Temporary session logout
       await tempAuth.signOut();
 
       return credential;
@@ -170,7 +157,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
         .map((c) => c?.value?.toString().trim().toLowerCase() ?? '')
         .toList();
 
-    // int idx(String h) => headers.indexOf(h);
     int idx(String h) => headers.indexOf(h.toLowerCase());
     final ni = idx('name');
     final ei = idx('email');
@@ -224,7 +210,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       final fatherName = cell(row, fni);
       final label = name.isNotEmpty ? name : 'Row ${i + 2}';
 
-      // ── Validation ─────────────────────────────────────────────────────
       if (email.isEmpty || !_emailRx.hasMatch(email)) {
         _skipped.add('$label — invalid email "$email"');
         if (mounted) setState(() => _importProgress++);
@@ -241,7 +226,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
         if (mounted) setState(() => _importProgress++);
         continue;
       }
-      // Duplicate check
       final dup = await fs
           .collection('users')
           .where('email', isEqualTo: email)
@@ -253,17 +237,14 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
         continue;
       }
 
-      // ── Password: Name@123 ──────────────────────────────────────────────
       final firstName = name.split(' ').first.toLowerCase();
       final password = '${firstName}@123';
-      // ── Create Firebase Auth user ───────────────────────────────────────
       try {
         final cred = await _createUserAndSendVerification(
           email: email,
           password: password,
         );
 
-        // ── Write Firestore doc ─────────────────────────────────────────
         final Map<String, dynamic> doc = {
           'uid': cred.user!.uid,
           'name': name,
@@ -271,7 +252,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
           'email': email,
           'role': role,
           'class': cls,
-          'password': password, // stored for admin reference
+          'password': password,
           'created_at': FieldValue.serverTimestamp(),
         };
         if (role == 'Student') doc['rollNo'] = rollNo;
@@ -291,10 +272,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PROMOTE LOGIC
-  // ═══════════════════════════════════════════════════════════════════════════
-
   Future<void> _loadClassStudents(String cls) async {
     setState(() {
       _loadingPromote = true;
@@ -310,9 +287,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     if (mounted) {
       setState(() {
         _promoteStudents = snap.docs;
-        _promoteSelected = snap.docs
-            .map((d) => d.id)
-            .toSet(); // select all by default
+        _promoteSelected = snap.docs.map((d) => d.id).toSet();
         _loadingPromote = false;
       });
     }
@@ -347,7 +322,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     }
     await batch.commit();
     _snack('${_promoteSelected.length} student(s) promoted to Class $toClass.');
-    await _loadClassStudents(_promoteClass!); // refresh
+    await _loadClassStudents(_promoteClass!);
   }
 
   Future<void> _promoteAll() async {
@@ -386,10 +361,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     });
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DELETE LOGIC
-  // ═══════════════════════════════════════════════════════════════════════════
-
   Future<void> _deleteUser(DocumentSnapshot doc) async {
     final d = doc.data() as Map<String, dynamic>;
     final role = d['role']?.toString() ?? 'user';
@@ -407,7 +378,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
     if (!ok) return;
 
     try {
-      // Vercel live backend URL with correct file path (/api/delete_user)
       final url = Uri.parse(
         'https://admin-backend-six-delta.vercel.app/api/delete_user',
       );
@@ -419,7 +389,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       );
 
       if (response.statusCode == 200) {
-        // Agar server se delete ho gaya, toh Firestore se bhi doc hata dein
         await doc.reference.delete();
         _snack('"$name" removed successfully.');
       } else {
@@ -451,8 +420,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       return;
     }
 
-    // Ab har student ke liye ek Auth-delete call bhi hoti hai, isliye
-    // bade class ke liye kuch second lag sakte hain — loading dikhate hain.
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -473,8 +440,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       final name = data['name']?.toString() ?? 'Unknown';
 
       try {
-        // Bilkul _deleteUser wali same logic — pehle Authentication se
-        // delete karo, tabhi Firestore record bhi hataen.
         final response = await http.post(
           url,
           headers: {'Content-Type': 'application/json'},
@@ -497,7 +462,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
 
     await batch.commit();
 
-    if (mounted) Navigator.pop(context); // loading dialog band
+    if (mounted) Navigator.pop(context);
 
     final deletedCount = snap.docs.length - authFailNames.length;
 
@@ -510,9 +475,38 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       );
     }
   }
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EDIT STUDENT
-  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> updateUserData({
+    required String uid,
+    required String newEmail,
+    required String newName,
+  }) async {
+    final url = Uri.parse(
+      'https://admin-backend-six-delta.vercel.app/api/update_user',
+    );
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'uid': uid,
+          'newEmail': newEmail,
+          'newName': newName,
+        }),
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && responseData['success'] == true) {
+        print('User successfully updated!');
+      } else {
+        print('Failed to update: ${responseData['error']}');
+      }
+    } catch (e) {
+      print('Network error: $e');
+    }
+  }
 
   Future<void> _showEditTeacherDialog(DocumentSnapshot doc) async {
     final d = doc.data() as Map<String, dynamic>;
@@ -658,15 +652,41 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
           doc: doc,
           onSave: (values) async {
             try {
-              await doc.reference.update({
-                'name': values['name'],
-                'father_name': values['father_name'],
-                'email': values['email'],
-                'rollNo': values['rollNo'],
-                'class': values['class'],
-              });
-              return true;
+              final newEmail = values['email'];
+              final newName = values['name'];
+              final uid = doc.id;
+
+              final url = Uri.parse(
+                'https://admin-backend-six-delta.vercel.app/api/update_user',
+              );
+              final response = await http.post(
+                url,
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({
+                  'uid': uid,
+                  'newEmail': newEmail,
+                  'newName': newName,
+                }),
+              );
+
+              final responseData = jsonDecode(response.body);
+
+              if (response.statusCode == 200 &&
+                  responseData['success'] == true) {
+                await doc.reference.update({
+                  'name': newName,
+                  'father_name': values['father_name'],
+                  'email': newEmail,
+                  'rollNo': values['rollNo'],
+                  'class': values['class'],
+                });
+                return true;
+              } else {
+                print('Failed to update auth: ${responseData['error']}');
+                return false;
+              }
             } catch (e) {
+              print('Error: $e');
               return false;
             }
           },
@@ -680,13 +700,8 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       final d = doc.data() as Map<String, dynamic>;
       final name = d['name']?.toString() ?? 'Student';
       _snack('"$name" updated successfully.');
-      // Agar aapka koi refresh function hai, jaise _loadFirstPage() ya setState, wo yahan call kar lein
     }
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ASSIGN TEACHER CLASS
-  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _showAssignDialog(DocumentSnapshot doc) async {
     final d = doc.data() as Map<String, dynamic>;
@@ -698,13 +713,26 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
           const Center(child: CircularProgressIndicator(color: _navy)),
     );
 
-    final availableClasses = await _fetchAllStudentClasses();
-    final currentAssigned = List<String>.from(d['assignedClasses'] ?? []);
+    // Saari classes fetch kiin
+    List<String> availableClasses = await _fetchAllStudentClasses();
+
+    final currentClass = d['class']?.toString().trim() ?? '';
+
+    // SAFE CHECK: Agar teacher ki current class fetched list mein mojood nahi hai,
+    // toh usay list mein add kar dein taake Dropdown crash na ho!
+    if (currentClass.isNotEmpty && !availableClasses.contains(currentClass)) {
+      availableClasses.add(currentClass);
+      // Agar alphabetize/sort karna ho:
+      availableClasses.sort();
+    }
 
     if (!mounted) return;
-    Navigator.pop(context); // close loading spinner
+    Navigator.pop(context);
 
-    String? picked;
+    String? picked =
+        (currentClass.isNotEmpty && availableClasses.contains(currentClass))
+        ? currentClass
+        : (availableClasses.isNotEmpty ? availableClasses.first : null);
 
     showDialog(
       context: context,
@@ -715,7 +743,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
           ),
           titlePadding: EdgeInsets.zero,
           title: _dialogTitle(
-            'Assign Class — ${d['name']}',
+            'Change Class — ${d['name']}',
             Icons.class_outlined,
           ),
           contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -724,44 +752,27 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (currentAssigned.isNotEmpty) ...[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Currently assigned:',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade700,
-                      ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    currentClass.isEmpty
+                        ? 'Current class: No class'
+                        : 'Current class: Class $currentClass',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade700,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: currentAssigned.map((c) {
-                      return Chip(
-                        label: Text(c, style: const TextStyle(fontSize: 11)),
-                        deleteIcon: const Icon(Icons.close, size: 14),
-                        backgroundColor: _navy.withOpacity(0.08),
-                        onDeleted: () async {
-                          await doc.reference.update({
-                            'assignedClasses': FieldValue.arrayRemove([c]),
-                          });
-                          ss(() => currentAssigned.remove(c));
-                          _snack('Removed Class $c from ${d['name']}.');
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                ),
+
+                const SizedBox(height: 12),
+
                 availableClasses.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.symmetric(vertical: 8),
                         child: Text(
-                          'No classes found yet — add students with a class first.',
+                          'No classes found yet — add classes first.',
                           style: TextStyle(
                             fontSize: 12,
                             color: Color(0xFF9CA3AF),
@@ -770,19 +781,23 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
                       )
                     : DropdownButtonFormField<String>(
                         value: picked,
-                        hint: const Text('Select class to add'),
+                        hint: const Text('Select class'),
                         items: availableClasses
                             .map(
-                              (c) => DropdownMenuItem(
+                              (c) => DropdownMenuItem<String>(
                                 value: c,
                                 child: Text('Class $c'),
                               ),
                             )
                             .toList(),
-                        onChanged: (v) => ss(() => picked = v),
-                        decoration: _inDeco('Select class'),
+                        onChanged: (v) {
+                          ss(() => picked = v);
+                        },
+                        decoration: _inDeco('Select new class'),
                       ),
+
                 const SizedBox(height: 16),
+
                 Row(
                   children: [
                     Expanded(
@@ -802,40 +817,57 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 10),
+
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: picked == null
+                        onPressed: picked == null || picked == currentClass
                             ? null
                             : () async {
+                                final newClass = picked!;
+
                                 Navigator.pop(ctx);
+
                                 final ok = await _confirm(
-                                  title: 'Assign Class $picked?',
+                                  title: 'Change Class to $newClass?',
                                   body:
-                                      'Assign "${d['name']}" to Class $picked?',
-                                  btnLabel: 'Assign',
+                                      'Change "${d['name']}" from '
+                                      '${currentClass.isEmpty ? 'No class' : 'Class $currentClass'} '
+                                      'to Class $newClass?',
+                                  btnLabel: 'Change',
                                   btnColor: _accent,
                                 );
+
                                 if (!ok) return;
-                                await doc.reference.update({
-                                  'assignedClasses': FieldValue.arrayUnion([
-                                    picked,
-                                  ]),
-                                });
-                                _snack(
-                                  '"${d['name']}" assigned to Class $picked.',
-                                );
+
+                                try {
+                                  await doc.reference.update({
+                                    'class': newClass,
+                                  });
+
+                                  _snack(
+                                    '"${d['name']}" is now assigned to Class $newClass.',
+                                  );
+                                } catch (e) {
+                                  _snack(
+                                    'Failed to change class: $e',
+                                    isError: true,
+                                  );
+                                }
                               },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _navy,
                           foregroundColor: _white,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          disabledForegroundColor: Colors.grey.shade600,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(9),
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         child: const Text(
-                          'Assign',
+                          'Change Class',
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -849,10 +881,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
       ),
     );
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -2396,6 +2424,8 @@ class _TeachersTab extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Container(
+        width: double
+            .infinity, // <--- Yeh line add karein taake container poori width le le
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -2412,97 +2442,107 @@ class _TeachersTab extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(const Color(0xFFF0F4FF)),
-              headingTextStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: _navy,
+            child: ConstrainedBox(
+              // <--- Yeh widget add karein taake table poori screen ki minimum width ko cover kare
+              constraints: BoxConstraints(
+                minWidth:
+                    MediaQuery.of(ctx).size.width -
+                    64, // Screen ki width ke mutabiq adjust karega
               ),
-              dataRowMinHeight: 56,
-              dataRowMaxHeight: 56,
-              columnSpacing: 20,
-              columns: const [
-                DataColumn(label: Text('Name')),
-                DataColumn(label: Text('Email')),
-                DataColumn(label: Text('Assigned Classes')),
-                DataColumn(label: Text('Actions')),
-              ],
-              rows: docs.map((doc) {
-                final d = doc.data() as Map<String, dynamic>;
-                final name = d['name']?.toString() ?? '—';
-                final teacherClass = d['class']?.toString().trim() ?? '';
-                return DataRow(
-                  cells: [
-                    DataCell(
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1F2937),
+              child: DataTable(
+                headingRowColor: WidgetStateProperty.all(
+                  const Color(0xFFF0F4FF),
+                ),
+                headingTextStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: _navy,
+                ),
+                dataRowMinHeight: 56,
+                dataRowMaxHeight: 56,
+                columnSpacing: 20,
+                columns: const [
+                  DataColumn(label: Text('Name')),
+                  DataColumn(label: Text('Email')),
+                  DataColumn(label: Text('Class')),
+                  DataColumn(label: Text('Actions')),
+                ],
+                rows: docs.map((doc) {
+                  final d = doc.data() as Map<String, dynamic>;
+                  final name = d['name']?.toString() ?? '—';
+                  final teacherClass = d['class']?.toString().trim() ?? '';
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1F2937),
+                          ),
                         ),
                       ),
-                    ),
-                    DataCell(
-                      Text(
-                        d['email'] ?? '—',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF6B7280),
+                      DataCell(
+                        Text(
+                          d['email'] ?? '—',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                          ),
                         ),
                       ),
-                    ),
-                    DataCell(
-                      teacherClass.isEmpty
-                          ? const Text(
-                              'Not Assigned',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF9CA3AF),
-                              ),
-                            )
-                          : Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _navy.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                teacherClass,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: _navy,
-                                  fontWeight: FontWeight.w700,
+                      DataCell(
+                        teacherClass.isEmpty
+                            ? const Text(
+                                'Not Assigned',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF9CA3AF),
+                                ),
+                              )
+                            : Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _navy.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  teacherClass,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: _navy,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                    ),
-                    DataCell(
-                      Row(
-                        children: [
-                          _btn(
-                            Icons.class_outlined,
-                            _accent,
-                            'Assign Class',
-                            () => onAssign(doc),
-                          ),
-                          const SizedBox(width: 6),
-                          _btn(
-                            Icons.delete_outline,
-                            _red,
-                            'Remove Teacher',
-                            () => onDelete(doc),
-                          ),
-                        ],
                       ),
-                    ),
-                  ],
-                );
-              }).toList(),
+                      DataCell(
+                        Row(
+                          children: [
+                            _btn(
+                              Icons.class_outlined,
+                              _accent,
+                              'Class',
+                              () => onAssign(doc),
+                            ),
+                            const SizedBox(width: 6),
+                            _btn(
+                              Icons.delete_outline,
+                              _red,
+                              'Remove Teacher',
+                              () => onDelete(doc),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
             ),
           ),
         ),
@@ -2604,13 +2644,6 @@ class _TeachersTab extends StatelessWidget {
                                 color: Color(0xFF9CA3AF),
                               ),
                             ),
-                      const Text(
-                        'No class assigned',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF9CA3AF),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -2626,7 +2659,7 @@ class _TeachersTab extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.all(4),
                       constraints: const BoxConstraints(),
-                      tooltip: 'Assign Class',
+                      tooltip: 'Class',
                     ),
                     IconButton(
                       onPressed: () => onDelete(doc),
@@ -2771,7 +2804,6 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
       return;
     }
 
-    // Simple email regex check agar aapka _emailRx define nahi hai
     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
     if (!emailRegex.hasMatch(email)) {
       setState(() => errorText = 'Enter a valid email.');
@@ -2782,20 +2814,44 @@ class _EditStudentDialogState extends State<_EditStudentDialog> {
       errorText = null;
       saving = true;
     });
+    try {
+      setState(() => saving = true);
 
-    final success = await widget.onSave({
-      'name': name,
-      'father_name': fatherName,
-      'email': email,
-      'rollNo': roll,
-      'class': cls,
-    });
+      final url = Uri.parse(
+        'https://admin-backend-six-delta.vercel.app/api/update_user',
+      );
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'uid': widget.doc.id,
+          'newEmail': email,
+          'newName': name,
+        }),
+      );
 
-    if (!mounted) return;
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update authentication: ${response.body}');
+      }
 
-    if (success) {
-      Navigator.of(context).pop('updated');
-    } else {
+      final success = await widget.onSave({
+        'name': name,
+        'father_name': fatherName,
+        'email': email,
+        'rollNo': roll,
+        'class': cls,
+      });
+
+      if (!mounted) return;
+
+      if (success) {
+        Navigator.of(context).pop('updated');
+      } else {
+        setState(() => saving = false);
+      }
+    } catch (e) {
+      print("Error updating user: $e");
+      if (!mounted) return;
       setState(() => saving = false);
     }
   }
