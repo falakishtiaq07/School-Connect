@@ -15,12 +15,7 @@ class AdminAnnouncementsScreen extends StatefulWidget {
 
 class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
   static const _navy = Color(0xFF1E3A5F);
-  static const _primary = Color(0xFF3B82F6);
-  static const _success = Color(0xFF10B981);
-  static const _danger = Color(0xFFEF4444);
   static const _border = Color(0xFFE5E7EB);
-  static const _textPri = Color(0xFF1F2937);
-  static const _textSec = Color(0xFF6B7280);
   static const _bg = Color(0xFFF8FAFC);
   static const _white = Colors.white;
   int selectedTab = 0;
@@ -52,10 +47,8 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
         CloudinaryFile.fromFile(file.path),
       );
 
-      debugPrint("IMAGE URL: ${response.secureUrl}");
       return response.secureUrl;
     } catch (e) {
-      debugPrint("UPLOAD ERROR: $e");
       return null;
     }
   }
@@ -554,7 +547,7 @@ class _FormCard extends StatelessWidget {
                           child: Text(
                             attachmentFile != null
                                 ? '✔  Image Selected'
-                                : '📎  Attachment (Optional)',
+                                : '📎  Attachment (If any)',
                             style: TextStyle(
                               fontSize: 13,
                               color: attachmentFile != null

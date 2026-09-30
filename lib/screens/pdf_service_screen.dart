@@ -48,8 +48,6 @@ class ChallanData {
   });
 }
 
-// ─── PDF Service ──────────────────────────────────────────────────────────────
-
 class ChallanPdfService {
   static const _navy = PdfColor.fromInt(0xFF1E3A5F);
   static const _lightBlue = PdfColor.fromInt(0xFFE8F0FE);
@@ -58,11 +56,8 @@ class ChallanPdfService {
   static const _white = PdfColors.white;
   static const _grey = PdfColor.fromInt(0xFF555555);
 
-  // A4 = 841pt height, margin 8 top+8 bottom = 825pt usable
-  // 3 copies + 2 dividers(8pt each) = 825 - 16 = 809 / 3 = 269 → use 268
   static const double _copyHeight = 268.0;
 
-  // ── buildPageWidget ──────────────────────────────────────────────────────
   static pw.Widget buildPageWidget(ChallanData data) {
     return pw.Column(
       children: [
@@ -81,7 +76,6 @@ class ChallanPdfService {
     );
   }
 
-  // ── addChallanPage: adds one A4 page to existing Document ───────────────
   static void addChallanPage(pw.Document pdf, ChallanData data) {
     pdf.addPage(
       pw.Page(
@@ -109,25 +103,20 @@ class ChallanPdfService {
     );
   }
 
-  // ── generatePdf: returns bytes for single student ───────────────────────
   static Future<Uint8List> generatePdf(ChallanData data) async {
     final pdf = pw.Document();
     addChallanPage(pdf, data);
     return pdf.save();
   }
 
-  // ── generateAndShare ─────────────────────────────────────────────────────
-  // ── generateAndUploadToCloudinary ────────────────────────────────────────
   static Future<String?> generateAndUploadToCloudinary(
     ChallanData data,
     String cloudName,
     String uploadPreset,
   ) async {
     try {
-      // 1. PDF bytes generate karein
       final bytes = await generatePdf(data);
 
-      // 2. Cloudinary par upload karein
       final cloudinary = CloudinaryPublic(
         cloudName,
         uploadPreset,
@@ -145,7 +134,6 @@ class ChallanPdfService {
         ),
       );
 
-      // 3. Cloudinary ka secure URL return kar dega
       return response.secureUrl;
     } catch (e) {
       print('Cloudinary PDF Upload Error: $e');
@@ -153,7 +141,6 @@ class ChallanPdfService {
     }
   }
 
-  // ── Dashed divider (8pt height) ──────────────────────────────────────────
   static pw.Widget _dashed() {
     return pw.Container(
       height: 8,
@@ -174,7 +161,6 @@ class ChallanPdfService {
     );
   }
 
-  // ── One copy ─────────────────────────────────────────────────────────────
   static pw.Widget _buildCopy(String copyType, ChallanData data) {
     return pw.Container(
       decoration: pw.BoxDecoration(
@@ -193,7 +179,6 @@ class ChallanPdfService {
     );
   }
 
-  // ── Header ───────────────────────────────────────────────────────────────
   static pw.Widget _header(String copyType, ChallanData data) {
     return pw.Container(
       color: _navy,
@@ -261,7 +246,6 @@ class ChallanPdfService {
     );
   }
 
-  // ── Info Section ─────────────────────────────────────────────────────────
   static pw.Widget _info(ChallanData data) {
     return pw.Container(
       color: _lightBlue,
@@ -329,7 +313,6 @@ class ChallanPdfService {
     );
   }
 
-  // ── Particulars Table ────────────────────────────────────────────────────
   static pw.Widget _table(ChallanData data) {
     return pw.Container(
       decoration: pw.BoxDecoration(
@@ -387,11 +370,9 @@ class ChallanPdfService {
               ],
             ),
           ),
-          // Fee rows
           ...data.feeParticulars.map(
             (item) => _tRow(item.name, 'Rs. ${_fmt(item.amount)}', _white),
           ),
-          // Total
           pw.Container(
             color: _lightBlue,
             child: pw.Row(
@@ -478,7 +459,6 @@ class ChallanPdfService {
     );
   }
 
-  // ── Footer — 2 lines only ────────────────────────────────────────────────
   static pw.Widget _footer() {
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -532,7 +512,6 @@ class ChallanPdfService {
     );
   }
 
-  // ── Number formatter ─────────────────────────────────────────────────────
   static String _fmt(double v) {
     if (v == v.truncateToDouble()) {
       return v.toInt().toString().replaceAllMapped(

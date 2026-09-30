@@ -23,13 +23,8 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
   String? _selectedType;
   bool _isLoading = true;
 
-  final List<String> _types = ["Sick Leave", "Casual Leave", "Emergency"];
+  final List<String> _types = ["Sick Leave", "Casual Leave", "Urgent Work"];
 
-  // ---------------- Attachment (new) ----------------
-  // TODO: replace with your actual Cloudinary cloud name + an UNSIGNED
-  // upload preset (Cloudinary dashboard -> Settings -> Upload -> Add
-  // upload preset -> Signing Mode: Unsigned). "auto" resource type lets
-  // Cloudinary accept both images and PDFs through the same endpoint.
   static const String _cloudinaryCloudName = "dkjsza6pw";
   static const String _cloudinaryUploadPreset = "leave_images";
 
@@ -64,8 +59,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
     }
   }
 
-  // ---------------- Attachment helpers (new) ----------------
-
   bool _isImageExtension(String? extension) {
     if (extension == null) return false;
     final ext = extension.toLowerCase();
@@ -87,8 +80,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
     setState(() => _selectedAttachment = null);
   }
 
-  /// Uploads the picked file to Cloudinary and returns the secure URL.
-  /// Throws an Exception on failure (caught by the caller in _submitRequest).
   Future<String> _uploadAttachmentToCloudinary(PlatformFile file) async {
     final uri = Uri.parse(
       "https://api.cloudinary.com/v1_1/$_cloudinaryCloudName/auto/upload",
@@ -133,7 +124,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
     }
     setState(() => _isLoading = true);
 
-    // ---- Upload attachment first (if any) ----
     String? attachmentUrl;
     String? attachmentType;
 
@@ -165,7 +155,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
     }
 
     try {
-      // 1. Firestore mein leave request save karein
       DocumentReference leaveRef = await FirebaseFirestore.instance
           .collection('leave_requests')
           .add({
@@ -183,7 +172,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
             "attachmentType": attachmentType ?? "",
           });
 
-      // 2. Sirf is student ki class ke assigned teacher ko dhoondein
       if (_studentClass != null && _studentClass!.isNotEmpty) {
         final teacherQuery = await FirebaseFirestore.instance
             .collection('users')
@@ -192,13 +180,11 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
             .get();
 
         if (teacherQuery.docs.isNotEmpty) {
-          // Teacher ki Firebase UID mil gayi!
           String teacherUid = teacherQuery.docs.first.id;
 
-          // 3. 🌟 FIXED: All-in-one dynamic function ka istemal 🌟
           try {
             await NotificationService.sendPushToUser(
-              targetUserId: teacherUid, // Teacher ki exact User ID target hogi
+              targetUserId: teacherUid,
               title: "New Leave Request",
               body:
                   "${_studentName ?? "Student"} has applied for leave. Reason: ${_reasonController.text.trim()}",
@@ -366,7 +352,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
       ),
     );
   }
-  // ---------------- Attachment viewing (new) ----------------
 
   Widget _buildAttachmentDetail(String url, String type) {
     if (type == "image") {
@@ -721,7 +706,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
                                 },
                               ),
 
-                              // History Section
                               LayoutBuilder(
                                 builder: (context, constraints) {
                                   return Column(
@@ -1212,7 +1196,6 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
       ),
     );
   }
-  // ---------------- Attachment UI (new) ----------------
 
   Widget _buildAttachmentSection() {
     return Container(
@@ -1258,7 +1241,7 @@ class _SendLeaveRequestPageState extends State<SendLeaveRequestPage> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      "Upload image or PDF (Optional)",
+                      "Upload image (if any)",
                       style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                   ],

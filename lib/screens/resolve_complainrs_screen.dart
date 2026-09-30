@@ -66,7 +66,6 @@ class _AdminComplaintsPageState extends State<AdminComplaintsPage> {
               .length;
           int resolved = docs.where((d) => d['status'] == "Resolved").length;
 
-          // Filtering logic
           final filteredDocs = docs.where((d) {
             if (filter == "All") return true;
             return d['status'] == filter;
@@ -77,7 +76,6 @@ class _AdminComplaintsPageState extends State<AdminComplaintsPage> {
               constraints: const BoxConstraints(maxWidth: 1300),
               child: Column(
                 children: [
-                  // 1. Side-by-side Scrollable Stats Cards
                   SizedBox(
                     height: 110,
                     child: ListView(
@@ -126,7 +124,6 @@ class _AdminComplaintsPageState extends State<AdminComplaintsPage> {
                     ),
                   ),
 
-                  // 2. Horizontal Scrollable Filter Options
                   SizedBox(
                     height: 60,
                     child: ListView(
@@ -185,7 +182,6 @@ class _AdminComplaintsPageState extends State<AdminComplaintsPage> {
                     ),
                   ),
 
-                  // 3. Responsive List View
                   Expanded(
                     child: filteredDocs.isEmpty
                         ? const Center(

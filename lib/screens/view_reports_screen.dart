@@ -23,7 +23,6 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
     _loadReadReports();
   }
 
-  // 1. Firestore se check karein kaun se reports read ho chuke hain
   Future<void> _loadReadReports() async {
     if (currentStudentId.isEmpty) {
       setState(() {
@@ -45,14 +44,12 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
         _isLoadingReads = false;
       });
     } catch (e) {
-      // Agar error aaye tab bhi loading khatam kar ke screen chalne dein
       setState(() {
         _isLoadingReads = false;
       });
     }
   }
 
-  // 2. Report ko read mark karne ka function (Optimized)
   Future<void> _markReportAsRead(String reportId) async {
     if (_readReportIds.contains(reportId)) return;
 
@@ -64,9 +61,7 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
         'reportId': reportId,
         'readAt': FieldValue.serverTimestamp(),
       });
-    } catch (e) {
-      // Handle error
-    }
+    } catch (e) {}
   }
 
   @override
@@ -107,7 +102,6 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
               var report = reportDoc.data() as Map<String, dynamic>;
               String reportId = reportDoc.id;
 
-              // ListTile ke andar isUnread ki line ko yeh bana dein:
               final bool isUnread =
                   (report['isRead'] == false) &&
                   !_readReportIds.contains(reportId);
@@ -119,7 +113,6 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
     );
   }
 
-  // Report Card Design with Unread Indicator
   Widget _buildReportCard(
     BuildContext context,
     Map<String, dynamic> data,
@@ -165,7 +158,6 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
               backgroundColor: perfColor.withOpacity(.12),
               child: Icon(Icons.assignment_rounded, color: perfColor),
             ),
-            // Red unread dot indicator
             if (isUnread)
               Positioned(
                 right: 0,
@@ -242,12 +234,10 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
         ),
         trailing: const Icon(Icons.info_outline, color: Color(0xFF2E86AB)),
         onTap: () async {
-          // Jaise hi student tap kare, usko read mark kar dein
           if (isUnread) {
             await _markReportAsRead(reportId);
           }
 
-          // Phir details screen par navigate karein
           if (!context.mounted) return;
           Navigator.push(
             context,
@@ -261,7 +251,6 @@ class _StudentReportViewScreenState extends State<StudentReportViewScreen> {
     );
   }
 
-  // Empty State Design
   Widget _buildEmptyState() {
     return Center(
       child: Column(

@@ -6,7 +6,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'dart:typed_data';
-
 import 'package:school_connect/service/notification_service.dart';
 
 class MonthlyReportsScreen extends StatefulWidget {
@@ -32,7 +31,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
 
-  // State variables
   List<String> classesList = [
     "Class 1",
     "Class 2",
@@ -55,7 +53,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
   bool isLoadingStudents = false;
   bool isSaving = false;
 
-  // Design Constants
   final Color primaryBlue = const Color(0xFF1746A2);
   final Color successGreen = const Color(0xFF166534);
 
@@ -129,7 +126,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
       students = [];
       selectedStudentId = null;
 
-      // Class change par old attendance clear
       totalDaysController.clear();
       presentController.clear();
       absentController.clear();
@@ -149,12 +145,7 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
     });
   }
 
-  // ============================================================
-  // MONTHLY ATTENDANCE COUNT
-  // ============================================================
   Future<void> fetchStudentMonthlyAttendance() async {
-    // Agar class, student ya month select nahi hua
-    // to attendance fields clear kar dein.
     if (selectedClass == null ||
         selectedStudentId == null ||
         selectedMonth == null) {
@@ -174,26 +165,19 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
 
       final int monthNumber = months.indexOf(selectedMonth!) + 1;
 
-      // Current year use hoga kyun ke Monthly Reports mein
-      // abhi year dropdown nahi hai.
       final int year = DateTime.now().year;
 
       String twoDigits(int value) {
         return value.toString().padLeft(2, '0');
       }
 
-      // Selected month ka first date
       final String monthStart = '$year-${twoDigits(monthNumber)}-01';
 
-      // Next month ka first date
       final DateTime nextMonthDate = DateTime(year, monthNumber + 1, 1);
 
       final String nextMonthStart =
           '${nextMonthDate.year}-${twoDigits(nextMonthDate.month)}-01';
 
-      // Sirf selected student ki attendance fetch kar rahe hain.
-      // StudentId unique hone ki wajah se class + student ki
-      // composite Firestore index ki zaroorat nahi hogi.
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('attendance_records')
           .where('studentId', isEqualTo: selectedStudentId)
@@ -202,7 +186,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
       int present = 0;
       int absent = 0;
 
-      // Same date ko dobara count hone se rokne ke liye.
       final Set<String> countedDates = {};
 
       for (final doc in snapshot.docs) {
@@ -214,8 +197,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
 
         final String status = data['status']?.toString() ?? '';
 
-        // Safety check:
-        // selected class ka attendance hi count hoga.
         if (attendanceClass != selectedClass) {
           continue;
         }
@@ -224,13 +205,11 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
           continue;
         }
 
-        // Sirf selected month ke dates.
         if (date.compareTo(monthStart) < 0 ||
             date.compareTo(nextMonthStart) >= 0) {
           continue;
         }
 
-        // Same student + same date sirf 1 baar count hoga.
         if (!countedDates.add(date)) {
           continue;
         }
@@ -270,10 +249,8 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
   }
 
   Future<void> sendReport() async {
-    // 1. Validation Check
     if (!_formKey.currentState!.validate()) return;
 
-    // Student selection check
     if (selectedStudentId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -304,7 +281,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
         uploadedImageUrls.add(response.secureUrl);
       }
 
-      // 3. Firestore Data Save
       DocumentReference reportRef = await FirebaseFirestore.instance
           .collection('monthly_reports')
           .add({
@@ -336,7 +312,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
         debugPrint('NOTIFICATION ERROR: $notificationError');
       }
 
-      // 4. Fields Reset Logic
       _formKey.currentState!.reset();
 
       totalDaysController.clear();
@@ -530,8 +505,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
                                 selectedStudentName = student['name'];
                               });
 
-                              // Student select hote hi
-                              // attendance automatically fetch
                               fetchStudentMonthlyAttendance();
                             }
                           },
@@ -546,8 +519,6 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
                       selectedMonth = val;
                     });
 
-                    // Month select/change hote hi
-                    // attendance automatically fetch
                     fetchStudentMonthlyAttendance();
                   }),
                 ]),
@@ -661,7 +632,7 @@ class _MonthlyReportsScreenState extends State<MonthlyReportsScreen> {
 
                 const SizedBox(height: 10),
 
-                _buildSectionTitle("Attachments (Optional)"),
+                _buildSectionTitle("Attachment (If any)"),
 
                 _buildAttachmentSection(),
 

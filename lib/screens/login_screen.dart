@@ -35,7 +35,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- TOP CURVED HEADER WITH SCHOOL ICON ---
             ClipPath(
               clipper: UserHeaderClipper(),
               child: Container(
@@ -64,13 +63,11 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
             const SizedBox(height: 35),
 
-            // --- INPUT FIELDS & BUTTONS SECTION ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 25),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Email Address Field
                   const Text(
                     'Email Address',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -87,7 +84,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Password Field with Eye Button
                   const Text(
                     'Password',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -117,7 +113,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
                   const SizedBox(height: 35),
 
-                  // Main Login Button
                   SizedBox(
                     width: double.infinity,
                     height: 55,
@@ -177,7 +172,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                   return;
                                 }
 
-                                // Email Verification check
                                 if (!refreshedUser.emailVerified) {
                                   try {
                                     await refreshedUser.sendEmailVerification();
@@ -209,8 +203,18 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                   );
                                   return;
                                 }
-
-                                // Firestore se Role check karna (Admin fix included)
+                                if (refreshedUser.emailVerified) {
+                                  try {
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(loggedInUser.uid)
+                                        .update({'isVerified': true});
+                                  } catch (e) {
+                                    debugPrint(
+                                      "Failed to update isVerified in Firestore: $e",
+                                    );
+                                  }
+                                }
                                 String uid = loggedInUser.uid;
                                 debugPrint("Login UID: $uid");
                                 DocumentSnapshot userDoc =
@@ -218,12 +222,8 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                         .collection('users')
                                         .doc(uid)
                                         .get();
-                                debugPrint("Doc Exists: ${userDoc.exists}");
-                                debugPrint("Doc Raw Data: ${userDoc.data()}");
+
                                 if (!userDoc.exists) {
-                                  debugPrint(
-                                    "ERROR: Document nahi mila is UID ka!",
-                                  );
                                   await FirebaseAuth.instance.signOut();
                                   if (!mounted) return;
                                   setState(() => _isLoading = false);
@@ -241,11 +241,7 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
                                 final data =
                                     userDoc.data() as Map<String, dynamic>?;
-                                debugPrint("Parsed Data Map: $data");
                                 if (data == null || !data.containsKey('role')) {
-                                  debugPrint(
-                                    "ERROR: Data null hai ya 'role' key nahi mili!",
-                                  );
                                   await FirebaseAuth.instance.signOut();
                                   if (!mounted) return;
                                   setState(() => _isLoading = false);
@@ -265,7 +261,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                     .toString()
                                     .toLowerCase()
                                     .trim();
-                                debugPrint("Final Extracted Role: $userRole");
                                 String? studentClass;
                                 if (userRole == 'student' &&
                                     data.containsKey('class')) {
@@ -294,7 +289,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                   ),
                                 );
 
-                                // Navigation based on Role
                                 if (!mounted) return;
                                 if (userRole == 'admin') {
                                   Navigator.pushReplacement(
@@ -359,7 +353,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                               } catch (e) {
                                 if (!mounted) return;
                                 setState(() => _isLoading = false);
-                                debugPrint("Login general error: $e");
                               }
                             },
                       child: _isLoading
@@ -383,7 +376,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Forgot Password Link
                   Align(
                     alignment: Alignment.centerRight,
                     child: GestureDetector(
@@ -418,7 +410,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
   }
 }
 
-// Custom Clipper for Header Wave
 class UserHeaderClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {

@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:school_connect/screens/attendance_screen.dart';
 import 'package:school_connect/screens/monthly_reports_screen.dart';
@@ -27,11 +26,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   static const _bg = Color(0xFFF0F4F8);
   static const _white = Colors.white;
 
-  // ── Dynamic data — fetched from Firestore ───────────────────────────────
   String _userName = 'Loading...';
   String _userClass = 'Loading...';
 
-  // ── Unread Status ───────────────────────────────────────────────────────
   Map<String, bool> _unreadStatus = {'announcements': false, 'leaves': false};
 
   @override
@@ -41,7 +38,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     _loadUnreadStatus();
   }
 
-  // ── Fetch Teacher Data ───────────────────────────────────────────────────
   Future<void> fetchTeacherData() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -70,7 +66,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
   }
 
-  // ── Load Unread Status ──────────────────────────────────────────────────
   Future<void> _loadUnreadStatus() async {
     try {
       final status = await UnreadService.getUnreadStatus();
@@ -85,7 +80,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
   }
 
-  // ── Logout ───────────────────────────────────────────────────────────────
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -142,7 +136,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Cards list ──────────────────────────────────────────────────────────
   List<_CardData> _cards(BuildContext context) => [
     _CardData(
       icon: Icons.check_circle_outline,
@@ -166,7 +159,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       },
     ),
 
-    // ── Manage Leaves ───────────────────────────────────────────────
     _CardData(
       icon: Icons.calendar_month_outlined,
       title: 'Manage Leaves',
@@ -179,12 +171,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           MaterialPageRoute(builder: (_) => const ManageLeavePage()),
         );
 
-        // Refresh after returning
         await _loadUnreadStatus();
       },
     ),
 
-    // ── Announcements ───────────────────────────────────────────────
     _CardData(
       icon: Icons.campaign_outlined,
       title: 'School Announcements',
@@ -198,7 +188,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen()),
         );
 
-        // Refresh after returning
         await _loadUnreadStatus();
       },
     ),
@@ -245,10 +234,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     ),
   ];
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -272,7 +257,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   children: [
                     const SizedBox(height: 4),
 
-                    // ── Title + class badge ─────────────────────────────
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -302,7 +286,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                           ),
                         ),
 
-                        // Class badge
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -338,7 +321,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
                     const SizedBox(height: 24),
 
-                    // ── Responsive cards ─────────────────────────────────
                     if (isMobile)
                       ListView.builder(
                         shrinkWrap: true,
@@ -375,7 +357,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Header ──────────────────────────────────────────────────────────────
   Widget _buildHeader(bool isMobile) {
     final statusBarHeight = MediaQuery.of(context).padding.top;
 
@@ -586,7 +567,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Drawer ──────────────────────────────────────────────────────────────
   Widget _buildDrawer() {
     final initial = _userName.isNotEmpty && _userName != 'Loading...'
         ? _userName[0].toUpperCase()
@@ -710,7 +690,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Grid card ───────────────────────────────────────────────────────────
   Widget _buildGridCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -748,7 +727,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                     clipBehavior: Clip.none,
                     children: [
                       Container(
-                        // existing icon container
                         child: Icon(
                           card.icon,
                           // existing styling
@@ -823,7 +801,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // ── Mobile card ─────────────────────────────────────────────────────────
   Widget _buildMobileCard(_CardData card) {
     return Container(
       decoration: BoxDecoration(
@@ -939,10 +916,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 }
-
-// ═════════════════════════════════════════════════════════════════════════════
-// CARD DATA
-// ═════════════════════════════════════════════════════════════════════════════
 
 class _CardData {
   final IconData icon;

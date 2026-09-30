@@ -13,7 +13,6 @@ import 'package:school_connect/screens/welcome_screen.dart';
 import 'package:school_connect/screens/student_profile_screen.dart';
 import 'package:school_connect/screens/upload_paid_receipt_screen.dart';
 import 'package:school_connect/service/one_signal_service.dart';
-import 'package:school_connect/service/read_status_service.dart';
 import 'package:school_connect/service/unread_status_service.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
@@ -30,11 +29,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   static const _bg = Color(0xFFF0F4F8);
   static const _white = Colors.white;
 
-  // ── Dynamic data — fetched from Firestore ──────────────────────────────
   String _userName = 'Loading...';
   String _userClass = '...';
 
-  // Declared missing variable for unread status
   Map<String, dynamic> _unreadStatus = {};
 
   @override
@@ -152,7 +149,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  // ── Cards list ──────────────────────────────────────────────────────────
   List<_CardData> _cards(BuildContext context) => [
     _CardData(
       icon: Icons.notifications_active_outlined,
@@ -733,11 +729,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // Tumhara existing icon container
-                      Container(
-                        // existing properties same rakho
-                        child: Icon(card.icon),
-                      ),
+                      Container(child: Icon(card.icon)),
 
                       if (card.hasUnread)
                         Positioned(
@@ -843,11 +835,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Tumhara existing icon container
-                    Container(
-                      // existing properties same rakho
-                      child: Icon(card.icon),
-                    ),
+                    Container(child: Icon(card.icon)),
 
                     if (card.hasUnread)
                       Positioned(

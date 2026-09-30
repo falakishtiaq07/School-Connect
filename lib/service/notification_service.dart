@@ -18,6 +18,7 @@ class NotificationService {
     String? relatedId,
   }) async {
     final Map<String, dynamic> payload = {
+      "app_id": oneSignalAppId,
       "target_channel": "push",
       "headings": {"en": title},
       "contents": {"en": body},
@@ -77,6 +78,7 @@ class NotificationService {
     }
 
     await _send({
+      "app_id": oneSignalAppId,
       "target_channel": "push",
       "include_aliases": {"external_id": cleanIds},
       "headings": {"en": title},
@@ -110,6 +112,7 @@ class NotificationService {
     }
 
     await _send({
+      "app_id": oneSignalAppId,
       "target_channel": "push",
       "headings": {"en": title},
       "contents": {"en": body},
@@ -142,13 +145,14 @@ class NotificationService {
   static Future<void> _send(Map<String, dynamic> payload) async {
     try {
       debugPrint("ONESIGNAL REQUEST:");
-      debugPrint(const JsonEncoder.withIndent("  ").convert(payload));
 
       final response = await http.post(
         Uri.parse(_sendUrl),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode(payload),
       );
+      print('Vercel Status Code: ${response.statusCode}');
+      print('Vercel Response Body: ${response.body}');
 
       debugPrint("ONESIGNAL STATUS: ${response.statusCode}");
       debugPrint("ONESIGNAL RESPONSE: ${response.body}");

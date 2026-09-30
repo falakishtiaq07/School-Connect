@@ -492,7 +492,6 @@ class _MarkAttendanceBodyState extends State<_MarkAttendanceBody> {
       ),
       child: Row(
         children: [
-          // 1. Date Section
           Column(
             children: [
               InkWell(
@@ -819,7 +818,7 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
   bool isSelectionMode = false;
 
   Map<String, bool> selectedItems = {};
-  String? selectedDate; // Filter variable
+  String? selectedDate;
   bool showAttendanceCount = false;
   static const Color navy = Color(0xFF1E3A5F);
   static const Color borderColor = Color(0xFFE5E7EB);
@@ -971,7 +970,6 @@ class _AttendanceHistoryBodyState extends State<_AttendanceHistoryBody> {
     );
 
     if (picked == null) {
-      // User ne Cancel kiya
       setState(() {
         selectedCountMonth = null;
         showAttendanceCount = false;

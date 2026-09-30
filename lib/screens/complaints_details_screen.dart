@@ -12,11 +12,8 @@ class ComplaintDetailsPage extends StatefulWidget {
 }
 
 class _ComplaintDetailsPageState extends State<ComplaintDetailsPage> {
-  // Status update function - Firestore mein update karega
-  // Status update function - Firestore mein update karega
   Future<void> _updateStatus(String newStatus) async {
     try {
-      // 1. Pehle Firestore se document ka data fetch karein taake student ki ID mil sakay
       DocumentSnapshot docSnapshot = await FirebaseFirestore.instance
           .collection("complaints")
           .doc(widget.docId)
@@ -25,17 +22,13 @@ class _ComplaintDetailsPageState extends State<ComplaintDetailsPage> {
       if (!docSnapshot.exists) return;
       final data = docSnapshot.data() as Map<String, dynamic>;
 
-      // Aam tor par complaints mein student ki ID 'studentUid' ya 'userId' ke naam se hoti hai
-      // Aapke Firestore document ke field name ke mutabiq yehin par change kar lein (e.g., data['studentUid'] ya data['userId'])
       String targetUserId = data['studentUid'] ?? data['userId'] ?? '';
 
-      // 2. Firestore mein status update karein
       await FirebaseFirestore.instance
           .collection("complaints")
           .doc(widget.docId)
           .update({"status": newStatus});
 
-      // 3. Student ko Push Notification bhejein
       try {
         String title = 'Complaint Status Update';
         String body = 'Your complaint status has been updated to $newStatus.';
@@ -59,26 +52,22 @@ class _ComplaintDetailsPageState extends State<ComplaintDetailsPage> {
         }
       } catch (notificationError) {
         debugPrint('NOTIFICATION ERROR: $notificationError');
-        // Notification fail hone par bhi status update nahi rukega
       }
 
-      // Success SnackBar (Green)
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Status successfully updated to $newStatus"),
-          backgroundColor: Colors.green, // Yahan green color diya
-          behavior: SnackBarBehavior
-              .floating, // Is se bar thoda utha hua (floating) dikhega
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
-      // Error SnackBar (Red)
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error updating status: $e"),
-          backgroundColor: Colors.red, // Yahan red color diya
+          backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -124,7 +113,6 @@ class _ComplaintDetailsPageState extends State<ComplaintDetailsPage> {
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
 
-          // Date Formatting
           String dateStr = "N/A";
           if (data['createdAt'] != null) {
             dateStr = DateFormat(

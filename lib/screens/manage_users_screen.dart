@@ -253,6 +253,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen>
           'role': role,
           'class': cls,
           'password': password,
+          'isVerified': false,
           'created_at': FieldValue.serverTimestamp(),
         };
         if (role == 'Student') doc['rollNo'] = rollNo;
@@ -1808,6 +1809,7 @@ class _ClassTile extends StatelessWidget {
                         final name = d['name']?.toString() ?? '—';
                         final roll = d['rollNo']?.toString() ?? '—';
                         final email = d['email']?.toString() ?? '—';
+                        final bool isVerified = d['isVerified'] ?? false;
                         return Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -1840,14 +1842,31 @@ class _ClassTile extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      name,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF1F2937),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
+                                    // 👇 Yahan hum Name ke sath badge laga sakte hain taake saaf nazar aaye
+                                    Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            name,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF1F2937),
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Icon(
+                                          isVerified
+                                              ? Icons.verified
+                                              : Icons.pending,
+                                          color: isVerified
+                                              ? Colors.green
+                                              : Colors.orange,
+                                          size: 14,
+                                        ),
+                                      ],
                                     ),
                                     Row(
                                       children: [
@@ -2424,8 +2443,7 @@ class _TeachersTab extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Container(
-        width: double
-            .infinity, // <--- Yeh line add karein taake container poori width le le
+        width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -2471,16 +2489,38 @@ class _TeachersTab extends StatelessWidget {
                   final d = doc.data() as Map<String, dynamic>;
                   final name = d['name']?.toString() ?? '—';
                   final teacherClass = d['class']?.toString().trim() ?? '';
+                  final bool isVerified = d['isVerified'] ?? false;
                   return DataRow(
                     cells: [
                       DataCell(
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1F2937),
-                          ),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1F2937),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Builder(
+                              builder: (context) {
+                                final bool isVerified =
+                                    d['isVerified'] ?? false;
+                                return Icon(
+                                  isVerified ? Icons.verified : Icons.pending,
+                                  color: isVerified
+                                      ? Colors.green
+                                      : Colors.orange,
+                                  size: 14,
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       ),
                       DataCell(
@@ -2560,6 +2600,7 @@ class _TeachersTab extends StatelessWidget {
         final d = doc.data() as Map<String, dynamic>;
         final name = d['name']?.toString() ?? '?';
         final teacherClass = d['class']?.toString().trim() ?? '';
+        final bool isVerified = d['isVerified'] ?? false;
         return Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -2600,13 +2641,26 @@ class _TeachersTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1F2937),
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1F2937),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            isVerified ? Icons.verified : Icons.pending,
+                            color: isVerified ? Colors.green : Colors.orange,
+                            size: 14,
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(

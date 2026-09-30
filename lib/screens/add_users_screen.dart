@@ -403,6 +403,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
                                     "password": _passwordController.text.trim(),
                                     "isPasswordChanged": false,
                                     "emailVerified": false,
+                                    "isVerified": false,
                                     "createdAt": FieldValue.serverTimestamp(),
                                   };
 

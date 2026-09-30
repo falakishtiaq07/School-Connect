@@ -72,7 +72,7 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false), // Cancel
+            onPressed: () => Navigator.pop(context, false),
             child: const Text("Cancel"),
           ),
           ElevatedButton(
@@ -178,7 +178,6 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
             constraints: const BoxConstraints(maxWidth: 1300),
             child: Column(
               children: [
-                // Select Button area
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
                   child: Container(
@@ -329,7 +328,6 @@ class _ViewAnnouncementsScreenState extends State<ViewAnnouncementsScreen> {
                     ),
                   ),
                 ),
-                // List area
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: announcementsQuery.snapshots(),
@@ -579,7 +577,6 @@ class FullScreenImagePage extends StatelessWidget {
             fit: BoxFit.contain,
             loadingBuilder: (context, child, progress) {
               if (progress == null) return child;
-
               return const Center(
                 child: CircularProgressIndicator(color: Colors.white),
               );
@@ -611,7 +608,6 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
   void initState() {
     super.initState();
 
-    // Announcement open hote hi read mark ho jayegi
     _markAnnouncementAsRead();
   }
 
@@ -637,29 +633,21 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
-
       appBar: AppBar(
         elevation: 0,
         centerTitle: true,
         backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
-
         title: const Text(
           "Announcement Details",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-
           children: [
-            // ─────────────────────────────────────────────
-            // TITLE
-            // ─────────────────────────────────────────────
             Text(
               data['title'] ?? "No Title",
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -667,9 +655,6 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
 
             const SizedBox(height: 10),
 
-            // ─────────────────────────────────────────────
-            // DATE
-            // ─────────────────────────────────────────────
             Row(
               children: [
                 const Icon(
@@ -689,9 +674,6 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
 
             const SizedBox(height: 25),
 
-            // ─────────────────────────────────────────────
-            // DESCRIPTION
-            // ─────────────────────────────────────────────
             const Text(
               "Description",
               style: TextStyle(
@@ -705,9 +687,7 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
 
             Container(
               width: double.infinity,
-
               padding: const EdgeInsets.all(14),
-
               decoration: BoxDecoration(
                 color: const Color(0xFFF5F7FB),
                 borderRadius: BorderRadius.circular(12),
@@ -721,9 +701,6 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
 
             const SizedBox(height: 22),
 
-            // ─────────────────────────────────────────────
-            // ATTACHMENT
-            // ─────────────────────────────────────────────
             if (attachment != null && attachment.trim().isNotEmpty) ...[
               const Text(
                 "Attachment",
@@ -738,7 +715,6 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
 
               InkWell(
                 borderRadius: BorderRadius.circular(12),
-
                 onTap: () {
                   Navigator.push(
                     context,
@@ -747,35 +723,27 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
                     ),
                   );
                 },
-
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-
                   child: Image.network(
                     attachment,
-
                     width: 180,
                     height: 120,
-
                     fit: BoxFit.cover,
-
                     loadingBuilder: (context, child, loadingProgress) {
                       if (loadingProgress == null) {
                         return child;
                       }
-
                       return const SizedBox(
                         width: 180,
                         height: 120,
                         child: Center(child: CircularProgressIndicator()),
                       );
                     },
-
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         width: 180,
                         height: 120,
-
                         decoration: BoxDecoration(
                           color: Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(12),

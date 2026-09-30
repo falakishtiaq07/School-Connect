@@ -1,19 +1,13 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 
 import 'login_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
-  static const Color primaryBlue = Color(0xFF1746A2);
-  static const Color lightGreen = Color(0xFF8BE3B3);
-
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
-
-    // Responsive Width
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -24,20 +18,16 @@ class WelcomeScreen extends StatelessWidget {
               width: double.infinity,
               child: Column(
                 children: [
-                  // ================= TOP SECTION =================
-                  // === TOP SECTION (SIRF AIK DAFA RAKHEIN) ===
                   Stack(
                     alignment: Alignment.topCenter,
                     clipBehavior: Clip.none,
                     children: [
-                      // 1. Blue Background
                       Container(
                         height: 250,
                         width: double.infinity,
                         color: const Color(0xFF1E3A5F),
                       ),
 
-                      // 2. White Curve
                       Positioned.fill(
                         top: 160,
                         child: Container(
@@ -50,7 +40,6 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                       ),
 
-                      // 3. Main Content (Welcome Text & Cap Icon - NO DUPLICATE)
                       Positioned(
                         top: 30,
                         left: 0,
@@ -79,7 +68,6 @@ class WelcomeScreen extends StatelessWidget {
                     ],
                   ),
 
-                  // --- SCHOOL IMAGE AREA ---
                   const SizedBox(height: 10),
 
                   Padding(
@@ -93,7 +81,6 @@ class WelcomeScreen extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 35),
-                  // ================= ADMIN LOGIN BUTTON =================
                   InkWell(
                     onTap: () {
                       Navigator.push(
@@ -148,7 +135,6 @@ class WelcomeScreen extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 35),
-                  // ================= FOOTER =================
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 28),

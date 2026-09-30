@@ -16,11 +16,9 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
   String _selectedFilter = "All";
   String? _teacherClass;
 
-  // Nayi variables selection ke liye
   bool _isSelectionMode = false;
   final List<String> _selectedDocs = [];
 
-  // ---- Theme (matches Student Leave Request screen) ----
   static const Color navy = Color(0xFF1E3A5F);
   static const Color navyDark = Color(0xFF16304E);
   static const Color cardBorder = Color(0xFFE7ECF3);
@@ -31,7 +29,18 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
     _fetchTeacherClass();
   }
 
-  // Delete Function
+  Future<void> _fetchTeacherClass() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    if (doc.exists) {
+      setState(() => _teacherClass = doc.data()?['class']);
+    }
+  }
+
   Future<void> _confirmDelete() async {
     bool? confirm = await showDialog<bool>(
       context: context,
@@ -78,18 +87,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
     }
   }
 
-  Future<void> _fetchTeacherClass() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
-    if (doc.exists) {
-      setState(() => _teacherClass = doc.data()?['class']);
-    }
-  }
-
   Future<void> _showConfirmDialog(String docId, String status) async {
     return showDialog(
       context: context,
@@ -123,8 +120,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
       ),
     );
   }
-
-  // ---------------- Responsive helpers ----------------
 
   double _horizontalPadding(double width) {
     if (width >= 1200) return 24;
@@ -219,16 +214,13 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
                         var dataA = a.data() as Map<String, dynamic>;
                         var dataB = b.data() as Map<String, dynamic>;
 
-                        // Agar 'createdAt' hai toh wo use krein, warna 'fromDate'
                         Timestamp? timeA =
                             dataA['createdAt'] ?? dataA['fromDate'];
                         Timestamp? timeB =
                             dataB['createdAt'] ?? dataB['fromDate'];
 
                         if (timeA == null || timeB == null) return 0;
-                        return timeB.compareTo(
-                          timeA,
-                        ); // Descending: Newest/Latest first
+                        return timeB.compareTo(timeA);
                       });
                       if (_selectedFilter != "All") {
                         docs = docs
@@ -419,7 +411,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
         child: Row(
           children: [
-            // Icon side par
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -429,7 +420,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
               child: Icon(icon, color: color, size: 18),
             ),
             const SizedBox(width: 8),
-            // Number aur title samne
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -470,7 +460,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
       padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 0),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Agar screen choti hai (Mobile - e.g., width < 600), toh Dropdown dikhayein
           bool isMobile = constraints.maxWidth < 600;
 
           if (isMobile) {
@@ -589,7 +578,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
             );
           }
 
-          // Agar screen bari hai (Web / Tablet), toh purane wale horizontal tabs hi rahenge
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -748,7 +736,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
                 isSelected ? _selectedDocs.remove(id) : _selectedDocs.add(id);
               });
             } else {
-              // Mark this leave as read when teacher opens it
               if (data['teacherRead'] != true) {
                 await FirebaseFirestore.instance
                     .collection('leave_requests')
@@ -831,7 +818,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
                                       ),
                                     ),
 
-                                    // 🔴 New leave indicator
                                     if (isNew)
                                       Container(
                                         width: 9,
@@ -1003,7 +989,6 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
 
   Future<void> _updateStatus(String id, String status) async {
     try {
-      // 1. Pehle leave request ka document fetch karein taake student ki ID (studentUid/userId) mil sakay
       DocumentSnapshot docSnapshot = await FirebaseFirestore.instance
           .collection('leave_requests')
           .doc(id)
@@ -1012,17 +997,14 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
       if (!docSnapshot.exists) return;
       final data = docSnapshot.data() as Map<String, dynamic>;
 
-      // Firestore mein student ki ID kis field mein save hai, uske mutabiq yahan check ho raha hai
       String targetUserId =
           data['studentUid'] ?? data['userId'] ?? data['uid'] ?? '';
 
-      // 2. Firestore mein status update karein
       await FirebaseFirestore.instance
           .collection('leave_requests')
           .doc(id)
           .update({'status': status});
 
-      // 3. Student ko Push Notification bhejein
       try {
         String title = 'Leave Request Update';
         String body = 'Your leave request status has been updated to $status.';
@@ -1040,17 +1022,13 @@ class _ManageLeavePageState extends State<ManageLeavePage> {
             targetUserId: targetUserId,
             title: title,
             body: body,
-            notificationType:
-                'leave_update', // Notification click par handle karne ke liye
+            notificationType: 'leave_update',
             relatedId: id,
           );
         }
       } catch (notificationError) {
         debugPrint('NOTIFICATION ERROR: $notificationError');
-        // Notification fail hone par bhi status update nahi rukega
       }
-
-      // Success feedback agar zaroorat ho (Optional)
     } catch (e) {
       debugPrint('Error updating leave status: $e');
     }

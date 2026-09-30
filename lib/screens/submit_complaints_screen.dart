@@ -30,7 +30,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
     "Others",
   ];
 
-  // ---- Dashboard theme ----
   static const Color navy = Color(0xFF1E3A5F);
   static const Color navyDark = Color(0xFF16304E);
   static const Color accentBlue = Color(0xFF3B82F6);
@@ -142,7 +141,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
 
-    // Screen size ke mutabiq dynamic padding taaki web par bhi space zaya na ho
     double horizontalPadding = screenWidth > 900 ? 40 : 16;
 
     return Scaffold(
@@ -155,7 +153,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
               child: SafeArea(
                 child: Column(
                   children: [
-                    // Tabs Container
                     Container(
                       margin: EdgeInsets.fromLTRB(
                         horizontalPadding,
@@ -210,7 +207,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                     Expanded(
                       child: TabBarView(
                         children: [
-                          // New Complaint Tab
                           SingleChildScrollView(
                             padding: EdgeInsets.symmetric(
                               horizontal: horizontalPadding,
@@ -229,7 +225,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                                       ),
                                       const SizedBox(height: 14),
 
-                                      // Category Dropdown
                                       DropdownButtonFormField<String>(
                                         value: _selectedCategory,
                                         decoration: _inputDecoration(
@@ -254,7 +249,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                                       ),
                                       const SizedBox(height: 16),
 
-                                      // Title
                                       TextField(
                                         controller: _titleController,
                                         onChanged: (val) =>
@@ -269,7 +263,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                                       ),
                                       const SizedBox(height: 16),
 
-                                      // Details
                                       TextField(
                                         controller: _detailController,
                                         onChanged: (val) => setState(
@@ -346,7 +339,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
                             ),
                           ),
 
-                          // My Complaints Tab
                           SingleChildScrollView(
                             padding: EdgeInsets.symmetric(
                               horizontal: horizontalPadding,
@@ -552,7 +544,7 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
           itemBuilder: (context, index) {
             var data = complaints[index].data() as Map<String, dynamic>;
 
-            Color statusColor = accentBlue; // Pending
+            Color statusColor = accentBlue;
             if (data['status'] == 'Accepted') {
               statusColor = green;
             } else if (data['status'] == 'Rejected') {
@@ -686,7 +678,6 @@ class _SubmitComplaintPageState extends State<SubmitComplaintPage> {
     );
   }
 
-  // ---------------- Full Screen Complaint Details Page (No Width Limit) ----------------
   void _showComplaintDetails(Map<String, dynamic> data) {
     double screenWidth = MediaQuery.of(context).size.width;
     double detailsPadding = screenWidth > 900 ? 40 : 16;

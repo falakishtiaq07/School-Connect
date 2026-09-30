@@ -16,10 +16,8 @@ class UserLoginScreen extends StatefulWidget {
 }
 
 class _UserLoginScreenState extends State<UserLoginScreen> {
-  // Password hide/unhide karne ke liye variable
   bool _isPasswordHidden = true;
 
-  // Controllers taake text fields ka data get kiya ja sakay
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -39,7 +37,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- TOP CURVED HEADER WITH SCHOOL ICON ---
             ClipPath(
               clipper: UserHeaderClipper(),
               child: Container(
@@ -50,10 +47,8 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     SizedBox(height: 30),
-                    // School Building Icon
                     Icon(Icons.school_outlined, size: 65, color: Colors.white),
                     SizedBox(height: 12),
-                    // App Name
                     Text(
                       'SchoolConnect',
                       style: TextStyle(
@@ -70,13 +65,11 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
             const SizedBox(height: 35),
 
-            // --- INPUT FIELDS & BUTTONS SECTION ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 25),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Username Field
                   const Text(
                     'Name',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -92,7 +85,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
                   const SizedBox(height: 20),
 
-                  // 2. Email Address Field
                   const Text(
                     'Email Address',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -109,7 +101,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
                   const SizedBox(height: 20),
 
-                  // 3. Password Field with Eye Button
                   const Text(
                     'Password',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -139,7 +130,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
 
                   const SizedBox(height: 35),
 
-                  // 4. Main Login Button
                   SizedBox(
                     width: double.infinity,
                     height: 55,
@@ -172,7 +162,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                           return;
                         }
 
-                        // 🌟 SECURE REAL FIREBASE USER LOGIN
                         try {
                           final credential = await FirebaseAuth.instance
                               .signInWithEmailAndPassword(
@@ -186,7 +175,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                             return;
                           }
 
-                          // Firebase se latest verification status lao
                           await loggedInUser.reload();
 
                           final User? refreshedUser =
@@ -195,16 +183,13 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                           if (refreshedUser == null) {
                             return;
                           }
-                          // Agar email verify nahi hui
                           if (!refreshedUser.emailVerified) {
-                            // Verification email dobara bhej do
                             try {
                               await refreshedUser.sendEmailVerification();
                             } catch (e) {
                               print("Verification email resend error: $e");
                             }
 
-                            // User ko logout karo
                             await FirebaseAuth.instance.signOut();
 
                             if (context.mounted) {
@@ -281,7 +266,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                 }
                               } else {
                                 if (context.mounted) {
-                                  // Pehle Success message dikhayen
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text('User Login Successful!'),
@@ -290,11 +274,8 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                     ),
                                   );
 
-                                  // FCM TOKEN SAVE
-                                  // 👩‍🏫 AGAR TEACHER HAI TO TEACHER DASHBOARD
                                   if (userRole == 'teacher') {
                                     if (context.mounted) {
-                                      // <-- Yeh check zaroor add karein
                                       Navigator.pushReplacement(
                                         context,
                                         MaterialPageRoute(
@@ -303,11 +284,8 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                         ),
                                       );
                                     }
-                                  }
-                                  // 🎓 AGAR STUDENT HAI TO STUDENT DASHBOARD
-                                  else if (userRole == 'student') {
+                                  } else if (userRole == 'student') {
                                     if (context.mounted) {
-                                      // <-- Yeh check yahan bhi add karein
                                       Navigator.pushReplacement(
                                         context,
                                         MaterialPageRoute(
@@ -316,9 +294,7 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                         ),
                                       );
                                     }
-                                  }
-                                  // Agar Firestore me role recognize na ho
-                                  else {
+                                  } else {
                                     await FirebaseAuth.instance.signOut();
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
@@ -333,7 +309,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                                 }
                               }
                             } else {
-                              // Document database mein na mile
                               await FirebaseAuth.instance.signOut();
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -390,40 +365,30 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Forgot Password Link for User (Teacher/Student) - Right Aligned
                   Align(
-                    alignment: Alignment
-                        .centerRight, // Is se text right side par hi rahe ga
+                    alignment: Alignment.centerRight,
                     child: GestureDetector(
                       onTap: () {
-                        // Ab yeh direct OTP Verification Screen par le kar jaye ga
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const ForgotPasswordScreen(
-                              userRole:
-                                  'user', // Role humne 'user' pass kar diya
-                              // Yahan aap khali string "" ya koi default text de sakti hain
-                            ),
+                            builder: (context) =>
+                                const ForgotPasswordScreen(userRole: 'user'),
                           ),
                         );
                       },
                       child: const Text(
                         'Forgot Password?',
                         style: TextStyle(
-                          color: Color(
-                            0xFF1D4ED8,
-                          ), // Same professional blue color
+                          color: Color(0xFF1D4ED8),
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
-                          decoration: TextDecoration
-                              .underline, // Text ke niche line ke liye
+                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30), // Spacing ke liye
-                  // Back Option to go to Welcome Screen
+                  const SizedBox(height: 30),
                   Center(
                     child: TextButton(
                       onPressed: () => Navigator.pop(context),
@@ -443,7 +408,6 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
   }
 }
 
-// Custom Clipper jo header ko exact image jaisa smooth wave cut deta hai
 class UserHeaderClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {

@@ -9,9 +9,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:school_connect/service/notification_service.dart';
 
-// -----------------------------------------------------------------------
-// THEME CONSTANTS — matches the rest of Maraschool SE
-// -----------------------------------------------------------------------
 const Color kNavy = Color(0xFF1E3A5F);
 const Color kAccentBlue = Color(0xFF2E86AB);
 const Color kBgLight = Color(0xFFF4F7FB);
@@ -19,12 +16,7 @@ const Color kBgLight = Color(0xFFF4F7FB);
 const String kCloudinaryCloudName = 'dkjsza6pw';
 const String kCloudinaryUploadPreset = 'fee-receipts';
 
-/// Student-side screen for uploading a fee-payment receipt image.
-/// Only student-facing functionality lives here — no admin verification UI.
 class StudentPaymentReceiptScreen extends StatefulWidget {
-  /// Optional: pass the challan doc id if this screen is opened from a
-  /// specific challan. If null, the screen falls back to the student's
-  /// most recent challan (by `roll_no`).
   final String? challanId;
 
   const StudentPaymentReceiptScreen({super.key, this.challanId});
@@ -56,10 +48,6 @@ class _StudentPaymentReceiptScreenState
     _loadEverything();
   }
 
-  // ---------------------------------------------------------------------
-  // DATA LOADING
-  // ---------------------------------------------------------------------
-
   Future<void> _loadEverything() async {
     if (!mounted) return;
 
@@ -72,10 +60,6 @@ class _StudentPaymentReceiptScreenState
     });
 
     try {
-      // ============================================================
-      // 1. GET CURRENT LOGGED-IN FIREBASE USER
-      // ============================================================
-
       final currentUser = FirebaseAuth.instance.currentUser;
 
       if (currentUser == null) {
@@ -90,10 +74,6 @@ class _StudentPaymentReceiptScreenState
       }
 
       final uid = currentUser.uid;
-
-      // ============================================================
-      // 2. GET STUDENT INFORMATION FROM users COLLECTION
-      // ============================================================
 
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
@@ -139,10 +119,6 @@ class _StudentPaymentReceiptScreenState
 
       _rollNo = rollNo;
 
-      // ============================================================
-      // 3. FIND STUDENT PROFILE
-      // ============================================================
-
       try {
         final studentSnap = await FirebaseFirestore.instance
             .collection('student_profile')
@@ -154,13 +130,8 @@ class _StudentPaymentReceiptScreenState
           _studentData = studentSnap.docs.first.data();
         }
       } catch (e) {
-        // Do not stop the whole screen if student_profile query fails.
         debugPrint('student_profile query error: $e');
       }
-
-      // ============================================================
-      // 4. FALLBACK STUDENT DATA FROM users COLLECTION
-      // ============================================================
 
       _studentData ??= <String, dynamic>{};
 
@@ -170,15 +141,7 @@ class _StudentPaymentReceiptScreenState
       _studentData!['email'] ??= userData['email'];
       _studentData!['uid'] ??= uid;
 
-      // ============================================================
-      // 5. LOAD CHALLAN
-      // ============================================================
-
       if (widget.challanId != null && widget.challanId!.trim().isNotEmpty) {
-        // ----------------------------------------------------------
-        // Specific challan was passed to this screen
-        // ----------------------------------------------------------
-
         try {
           final challanDoc = await FirebaseFirestore.instance
               .collection('challans')
@@ -228,17 +191,12 @@ class _StudentPaymentReceiptScreenState
 
             _challanData = latestDoc.data();
 
-            // Save document ID if it is not already present.
             _challanData!['documentId'] = latestDoc.id;
           }
         } catch (e) {
           debugPrint('Challan loading error: $e');
         }
       }
-
-      // ============================================================
-      // 6. GET CHALLAN ID
-      // ============================================================
 
       String? challanIdForQuery;
 
@@ -250,10 +208,6 @@ class _StudentPaymentReceiptScreenState
             _challanData!['documentId']?.toString() ??
             _challanData!['id']?.toString();
       }
-
-      // ============================================================
-      // 7. LOAD EXISTING RECEIPT
-      // ============================================================
 
       _existingReceipt = null;
 
@@ -304,14 +258,8 @@ class _StudentPaymentReceiptScreenState
         }
       } catch (e) {
         debugPrint('Fee receipt loading error: $e');
-
-        // Receipt loading error should not break the screen.
         _existingReceipt = null;
       }
-
-      // ============================================================
-      // 8. FINISHED SUCCESSFULLY
-      // ============================================================
 
       if (!mounted) return;
 
@@ -354,10 +302,6 @@ class _StudentPaymentReceiptScreenState
       return null;
     }
   }
-
-  // ---------------------------------------------------------------------
-  // IMAGE PICK / SUBMIT
-  // ---------------------------------------------------------------------
 
   Future<void> _pickImage() async {
     try {
@@ -424,7 +368,7 @@ class _StudentPaymentReceiptScreenState
         'November',
         'December',
       ];
-      String currentMonthName = months[now.month - 1]; // e.g., "September"
+      String currentMonthName = months[now.month - 1];
       String currentYear = now.year.toString();
 
       final data = {
@@ -514,10 +458,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ---------------------------------------------------------------------
-  // BUILD
-  // ---------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -597,7 +537,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ----- Student info card -----
   Widget _buildStudentCard() {
     final name = _studentData?['student_name'] ?? '—';
     final rollNo = _studentData?['roll_no'] ?? _rollNo ?? '—';
@@ -655,7 +594,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ----- Challan info card -----
   Widget _buildChallanCard() {
     if (_challanData == null) {
       return _card(
@@ -726,7 +664,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ----- Status card -----
   Widget _buildStatusCard() {
     final status = (_existingReceipt?['status'] ?? 'No Receipt').toString();
     final config = _statusConfig(status);
@@ -759,13 +696,11 @@ class _StudentPaymentReceiptScreenState
 
                 const SizedBox(height: 2),
 
-                // Status description
                 Text(
                   config.subtitle,
                   style: const TextStyle(fontSize: 12.5, color: Colors.black87),
                 ),
 
-                // Admin Note
                 if (adminRemarks.isNotEmpty) ...[
                   const SizedBox(height: 10),
 
@@ -870,7 +805,6 @@ class _StudentPaymentReceiptScreenState
     return true;
   }
 
-  // ----- Existing receipt card -----
   Widget _buildExistingReceiptCard() {
     final url = _existingReceipt?['receiptImageUrl'] as String?;
     final uploadedAt = _existingReceipt?['uploadedAt'];
@@ -948,7 +882,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ----- Upload card -----
   Widget _buildUploadCard() {
     return _card(
       child: Column(
@@ -1000,7 +933,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ----- Preview card -----
   Widget _buildPreviewCard() {
     return _card(
       padding: EdgeInsets.zero,
@@ -1054,7 +986,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ----- Submit button -----
   Widget _buildSubmitButton() {
     return SizedBox(
       width: double.infinity,
@@ -1096,7 +1027,6 @@ class _StudentPaymentReceiptScreenState
     );
   }
 
-  // ----- Generic card wrapper -----
   Widget _card({required Widget child, Color? color, EdgeInsets? padding}) {
     return Container(
       width: double.infinity,
@@ -1133,9 +1063,6 @@ class _StatusConfig {
   });
 }
 
-/// Simple dashed-border upload box (no extra package dependency needed
-/// beyond CustomPainter). If the project already uses `dotted_border`
-/// (per existing challan screens), swap this for that widget instead.
 class DottedBorderBox extends StatelessWidget {
   final Widget child;
   const DottedBorderBox({super.key, required this.child});

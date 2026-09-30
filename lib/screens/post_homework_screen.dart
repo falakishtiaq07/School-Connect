@@ -9,9 +9,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:school_connect/service/notification_service.dart';
 
-/// ============================================================
-/// OUTER SHELL — gradient header + custom tabs + IndexedStack
-/// ============================================================
 class HomeworkManagementScreen extends StatefulWidget {
   const HomeworkManagementScreen({super.key});
 
@@ -21,9 +18,8 @@ class HomeworkManagementScreen extends StatefulWidget {
 }
 
 class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
-  int _selectedTab = 0; // 0 = Post Diary, 1 = Posted Diary
+  int _selectedTab = 0;
 
-  // ---- Dashboard theme ----
   static const Color navy = Color(0xFF1E3A5F);
   static const Color navyDark = Color(0xFF16304E);
   static const Color bg = Color(0xFFF8FAFC);
@@ -48,7 +44,6 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final double hPad = _horizontalPadding(constraints.maxWidth);
-
             return Column(
               children: [
                 _buildTabSelector(hPad),
@@ -118,7 +113,7 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
         children: [
           Expanded(
             child: _tabButton(
-              label: "Post Diary",
+              label: "New Diary",
               emoji: "📚",
               selected: _selectedTab == 0,
               onTap: () => setState(() => _selectedTab = 0),
@@ -184,9 +179,6 @@ class _HomeworkManagementScreenState extends State<HomeworkManagementScreen> {
   }
 }
 
-/// ============================================================
-/// TAB 1 — POST CLASS DIARY
-/// ============================================================
 class _PostHomeworkBody extends StatefulWidget {
   final VoidCallback onViewPosted;
   final double horizontalPadding;
@@ -223,9 +215,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     _fetchTeacherData();
   }
 
-  /// ==========================================================
-  /// FETCH TEACHER CLASS AUTOMATICALLY
-  /// ==========================================================
   Future<void> _fetchTeacherData() async {
     try {
       User? user = FirebaseAuth.instance.currentUser;
@@ -269,9 +258,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     }
   }
 
-  /// ==========================================================
-  /// PICK FILES
-  /// ==========================================================
   Future<void> _pickFile() async {
     try {
       FilePickerResult? result = await FilePicker.pickFiles(
@@ -316,9 +302,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     }
   }
 
-  /// ==========================================================
-  /// SUBMIT CLASS DIARY
-  /// ==========================================================
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -339,9 +322,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     try {
       List<String> uploadedFileUrls = [];
 
-      /// --------------------------------------------------------
-      /// CLOUDINARY UPLOAD
-      /// --------------------------------------------------------
       final cloudinary = CloudinaryPublic(
         'dkjsza6pw',
         'homework_images',
@@ -388,12 +368,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
             'teacherId': FirebaseAuth.instance.currentUser?.uid,
           });
 
-      /// --------------------------------------------------------
-      /// NOTIFICATION
-      /// --------------------------------------------------------
-      /// --------------------------------------------------------
-      /// NOTIFICATION
-      /// --------------------------------------------------------
       try {
         final studentsSnap = await FirebaseFirestore.instance
             .collection('users')
@@ -416,9 +390,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
         debugPrint('NOTIFICATION ERROR: $notificationError');
       }
 
-      /// --------------------------------------------------------
-      /// FORM RESET
-      /// --------------------------------------------------------
       if (!mounted) return;
 
       setState(() {
@@ -469,9 +440,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  /// ==================================================
-                  /// CLASS INFORMATION
-                  /// ==================================================
                   _sectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,9 +458,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
 
                   const SizedBox(height: 16),
 
-                  /// ==================================================
-                  /// DIARY DETAILS
-                  /// ==================================================
                   _sectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -525,9 +490,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
 
                   const SizedBox(height: 16),
 
-                  /// ==================================================
-                  /// ATTACHMENT
-                  /// ==================================================
                   _sectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -655,9 +617,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
 
                   const SizedBox(height: 24),
 
-                  /// ==================================================
-                  /// BUTTONS
-                  /// ==================================================
                   Row(
                     children: [
                       Expanded(
@@ -711,9 +670,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
           );
   }
 
-  /// ============================================================
-  /// INPUT DECORATION
-  /// ============================================================
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
@@ -730,9 +686,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     );
   }
 
-  /// ============================================================
-  /// SECTION CARD
-  /// ============================================================
   Widget _sectionCard({required Widget child}) {
     return Container(
       width: double.infinity,
@@ -753,9 +706,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     );
   }
 
-  /// ============================================================
-  /// SECTION HEADER
-  /// ============================================================
   Widget _sectionHeader(String title, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
@@ -783,9 +733,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
     );
   }
 
-  /// ============================================================
-  /// READ ONLY CLASS FIELD
-  /// ============================================================
   Widget _buildReadOnlyField(String label, String value) {
     return InputDecorator(
       decoration: _inputDecoration(
@@ -802,9 +749,6 @@ class _PostHomeworkBodyState extends State<_PostHomeworkBody> {
   }
 }
 
-/// ============================================================
-/// TAB 2 — POSTED CLASS DIARY LIST
-/// ============================================================
 class _PostedHomeworkListBody extends StatelessWidget {
   final double horizontalPadding;
 
@@ -863,9 +807,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
-  /// ============================================================
-  /// EMPTY STATE
-  /// ============================================================
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -899,9 +840,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
-  /// ============================================================
-  /// DIARY CARD
-  /// ============================================================
   Widget _buildDiaryCard(
     BuildContext context,
     String docId,
@@ -1006,9 +944,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
-  /// ============================================================
-  /// DATE FORMAT
-  /// ============================================================
   String _formatTimestamp(dynamic timestamp) {
     try {
       if (timestamp is Timestamp) {
@@ -1042,9 +977,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
         "${date.year}";
   }
 
-  /// ============================================================
-  /// CHIP
-  /// ============================================================
   Widget _chip(IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1070,9 +1002,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
-  /// ============================================================
-  /// DETAIL SCREEN
-  /// ============================================================
   void _showHomeworkDetails(BuildContext context, Map<String, dynamic> data) {
     Navigator.push(
       context,
@@ -1082,9 +1011,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
     );
   }
 
-  /// ============================================================
-  /// DELETE
-  /// ============================================================
   void _confirmDelete(BuildContext context, String docId) {
     showDialog(
       context: context,
@@ -1145,9 +1071,6 @@ class _PostedHomeworkListBody extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// FULL SCREEN IMAGE
-/// ============================================================
 class FullScreenImagePage extends StatelessWidget {
   final String imageUrl;
 
@@ -1184,9 +1107,6 @@ class FullScreenImagePage extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// TEACHER DIARY DETAIL SCREEN
-/// ============================================================
 class TeacherHomeworkDetailScreen extends StatelessWidget {
   final Map<String, dynamic> data;
 
@@ -1215,9 +1135,6 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// ==================================================
-            /// TITLE
-            /// ==================================================
             Text(
               data['title'] ?? "",
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -1225,16 +1142,10 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 15),
 
-            /// ==================================================
-            /// CLASS
-            /// ==================================================
             _chip(Icons.class_rounded, "Class : ${data['class'] ?? 'N/A'}"),
 
             const SizedBox(height: 20),
 
-            /// ==================================================
-            /// POSTED DATE
-            /// ==================================================
             if (data['timestamp'] != null)
               Container(
                 width: double.infinity,
@@ -1251,9 +1162,6 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
 
             if (data['timestamp'] != null) const SizedBox(height: 20),
 
-            /// ==================================================
-            /// DESCRIPTION
-            /// ==================================================
             const Text(
               "Description",
               style: TextStyle(
@@ -1278,9 +1186,6 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
               ),
             ),
 
-            /// ==================================================
-            /// ATTACHMENTS
-            /// ==================================================
             if (attachments.isNotEmpty) ...[
               const SizedBox(height: 22),
 
@@ -1328,9 +1233,6 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
     );
   }
 
-  /// ============================================================
-  /// CHIP
-  /// ============================================================
   Widget _chip(IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1356,9 +1258,6 @@ class TeacherHomeworkDetailScreen extends StatelessWidget {
     );
   }
 
-  /// ============================================================
-  /// TIMESTAMP FORMAT
-  /// ============================================================
   String _formatTimestamp(dynamic timestamp) {
     try {
       if (timestamp is Timestamp) {

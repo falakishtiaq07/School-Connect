@@ -10,7 +10,6 @@ class ProfileScreen extends StatelessWidget {
   static const _bg = Color(0xFFF0F4F8);
   static const _white = Colors.white;
 
-  // ── Change Password Dialog ─────────────────────────────────────────────────
   void _showChangePasswordDialog(BuildContext context) {
     final currentPasswordCtrl = TextEditingController();
     final newPasswordCtrl = TextEditingController();
@@ -30,7 +29,6 @@ class ProfileScreen extends StatelessWidget {
             final newPwd = newPasswordCtrl.text.trim();
             final confirmPwd = confirmPasswordCtrl.text.trim();
 
-            // ── Validations ───────────────────────────────────────────────
             if (currentPwd.isEmpty || newPwd.isEmpty || confirmPwd.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -82,17 +80,14 @@ class ProfileScreen extends StatelessWidget {
                 throw Exception('User not found.');
               }
 
-              // ── Step 1: Re-authenticate with current password ─────────
               final credential = EmailAuthProvider.credential(
                 email: user.email!,
                 password: currentPwd,
               );
               await user.reauthenticateWithCredential(credential);
 
-              // ── Step 2: Update to new password in Firebase Auth ───────
               await user.updatePassword(newPwd);
 
-              // ── Step 3: Close dialog and show success ─────────────────
               if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -137,7 +132,6 @@ class ProfileScreen extends StatelessWidget {
             }
           }
 
-          // ── Field builder ──────────────────────────────────────────────
           Widget pwdField({
             required TextEditingController ctrl,
             required String label,
@@ -336,10 +330,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
-
   @override
   Widget build(BuildContext context) {
     final User? currentUser = FirebaseAuth.instance.currentUser;
@@ -435,7 +425,6 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
 
-      // ── Body ──────────────────────────────────────────────────────────────
       body: FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance
             .collection('users')
@@ -449,7 +438,6 @@ class ProfileScreen extends StatelessWidget {
             return const Center(child: Text('User data not found'));
           }
 
-          // ── Data fetch — same logic as original ──────────────────────
           final data = snapshot.data!.data() as Map<String, dynamic>;
           final name =
               (data['name'] ??
@@ -467,14 +455,12 @@ class ProfileScreen extends StatelessWidget {
           return SingleChildScrollView(
             child: Column(
               children: [
-                // ── Profile header ─────────────────────────────────────────
                 Container(
                   width: double.infinity,
                   color: _navy,
                   padding: const EdgeInsets.fromLTRB(24, 36, 24, 32),
                   child: Column(
                     children: [
-                      // Avatar
                       Container(
                         width: 90,
                         height: 90,
@@ -498,7 +484,6 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // Name
                       Text(
                         name.isEmpty ? 'No Name' : name,
                         style: const TextStyle(
@@ -518,7 +503,6 @@ class ProfileScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
-                      // ── Personal info card ────────────────────────────────
                       _infoCard([
                         _InfoRow(Icons.person_outline, 'Full Name', name),
                         _InfoRow(
@@ -529,14 +513,12 @@ class ProfileScreen extends StatelessWidget {
                       ]),
                       const SizedBox(height: 12),
 
-                      // ── Class + Email card ────────────────────────────────
                       _infoCard([
                         _InfoRow(Icons.class_outlined, 'Class', userClass),
                         _InfoRow(Icons.email_outlined, 'Email', email),
                       ]),
                       const SizedBox(height: 12),
 
-                      // ── Change Password action card ───────────────────────
                       _actionCard(
                         icon: Icons.lock_outline,
                         label: 'Change Password',
@@ -555,7 +537,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // ── Info card widget ───────────────────────────────────────────────────────
   Widget _infoCard(List<_InfoRow> rows) {
     return Container(
       width: double.infinity,
@@ -629,7 +610,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // ── Action card widget ─────────────────────────────────────────────────────
   Widget _actionCard({
     required IconData icon,
     required String label,
@@ -701,7 +681,6 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-// ── Helper model ─────────────────────────────────────────────────────────────
 class _InfoRow {
   final IconData icon;
   final String label;

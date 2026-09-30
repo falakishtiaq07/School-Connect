@@ -12,15 +12,6 @@ const Color kBgLight = Color(0xFFF4F7FB);
 
 const List<String> _kStatuses = ['Pending', 'Paid', 'Rejected'];
 
-// =========================================================================
-// LEVEL 1 — ALL CLASSES
-// =========================================================================
-
-/// Entry point: "Verify Challan". Shows all classes that currently have at
-/// least one Student in the `users` collection — this is the single source
-/// of truth used everywhere else in the app (Manage Users, Promote,
-/// Generate Challan). If every student in a class is removed from `users`,
-/// that class automatically disappears from this list.
 class AdminVerifyChallanScreen extends StatefulWidget {
   const AdminVerifyChallanScreen({super.key});
 
@@ -38,9 +29,6 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
     _classesFuture = _loadClasses();
   }
 
-  /// Reads distinct `class` values from `users` (role == Student only) and
-  /// counts students per class. Client-side grouping keeps this working
-  /// without needing a separate `classes` collection.
   Future<List<_ClassSummary>> _loadClasses() async {
     final snap = await FirebaseFirestore.instance
         .collection('users')
@@ -61,7 +49,6 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
       classToUids.putIfAbsent(className, () => []).add(uid);
     }
 
-    // Sabhi unread pending receipts la kar check karein ke kis class mein hain
     final receiptsSnap = await FirebaseFirestore.instance
         .collection('fee_receipts')
         .where('status', isEqualTo: 'Pending')
@@ -82,7 +69,6 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
       final className = e.key;
       final uidsInClass = classToUids[className] ?? [];
 
-      // Check karein ke kya is class ke kisi student ki unread receipt hai
       final hasUnread = uidsInClass.any((uid) => unreadUids.contains(uid));
 
       return _ClassSummary(
@@ -181,7 +167,6 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
                     ClassReceiptsScreen(className: summary.className),
               ),
             );
-            // Jab wapas aayein toh classes list refresh hojaye taake red dot hat jaye
             setState(() {});
           },
           child: Container(
@@ -198,7 +183,6 @@ class _AdminVerifyChallanScreenState extends State<AdminVerifyChallanScreen> {
             ),
             child: Row(
               children: [
-                // 🔴 Stack laga kar Icon par Red Dot lagaya hai
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -269,14 +253,6 @@ class _ClassSummary {
   });
 }
 
-// =========================================================================
-// LEVEL 2 — RECEIPTS FOR THE SELECTED CLASS
-// =========================================================================
-
-/// Combines a `fee_receipts` document with the matching `users` record
-/// (looked up by uid, i.e. `studentId`) so the card can show name/roll/
-/// class without depending on any separate profile collection staying in
-/// sync.
 class _ReceiptItem {
   final String docId;
   final Map<String, dynamic> receipt;
@@ -314,8 +290,8 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
   bool _loadingRoster = true;
   String? _rosterError;
 
-  Map<String, Map<String, dynamic>> _rosterByUid = {}; // uid -> student data
-  final Map<String, _ReceiptItem> _receiptsById = {}; // merged, live-updating
+  Map<String, Map<String, dynamic>> _rosterByUid = {};
+  final Map<String, _ReceiptItem> _receiptsById = {};
 
   final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
   _subscriptions = [];
@@ -336,8 +312,6 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
   }
 
   Future<void> _init() async {
-    // Cancel any subscriptions from a previous attempt (e.g. the user
-    // tapped "Retry" after an error) so they don't leak/duplicate.
     for (final sub in _subscriptions) {
       sub.cancel();
     }
@@ -350,9 +324,6 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
     });
 
     try {
-      // Single source of truth: `users` collection. If a student is
-      // removed from here, they automatically disappear from this roster
-      // too — no separate profile collection to keep in sync.
       final rosterSnap = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'Student')
@@ -368,12 +339,8 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
 
       if (mounted) setState(() => _loadingRoster = false);
 
-      if (uids.isEmpty) return; // empty state handles this
+      if (uids.isEmpty) return;
 
-      // Firestore `whereIn` supports up to 30 values — chunk the roster
-      // and merge the resulting streams so this still works for large
-      // classes. Matching by uid (not roll_no) avoids any field-name or
-      // formatting mismatch between collections.
       const chunkSize = 30;
       for (var i = 0; i < uids.length; i += chunkSize) {
         final chunk = uids.sublist(
@@ -718,10 +685,6 @@ class _ClassReceiptsScreenState extends State<ClassReceiptsScreen> {
   }
 }
 
-// =========================================================================
-// LEVEL 3 — RECEIPT DETAIL + STATUS UPDATE
-// =========================================================================
-
 class ReceiptDetailScreen extends StatefulWidget {
   final _ReceiptItem item;
   const ReceiptDetailScreen({super.key, required this.item});
@@ -753,12 +716,6 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
     super.dispose();
   }
 
-  /// Challans are generated into `student_challans` (see
-  /// GenerateChallanScreen), not the older `challans` collection this used
-  /// to point at. Tries the stored `challanId` first (when the upload flow
-  /// managed to attach one), then falls back to the student's most recent
-  /// challan by uid — so this card still shows something useful even when
-  /// the receipt's own `challanId` link is missing.
   Future<void> _loadChallan() async {
     try {
       final challanId = widget.item.challanId;
@@ -786,7 +743,6 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
       if (doc != null && doc.exists) _challanData = doc.data();
     } catch (e) {
       debugPrint('Challan loading error: $e');
-      // Non-fatal — challan info is supplementary here.
     } finally {
       if (mounted) setState(() => _loadingChallan = false);
     }
@@ -795,7 +751,6 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
   Future<void> _updateStatus() async {
     setState(() => _saving = true);
     try {
-      // 1. Firestore mein receipt ka status update karein
       await FirebaseFirestore.instance
           .collection('fee_receipts')
           .doc(widget.item.docId)
@@ -804,7 +759,6 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
             'adminRemarks': _remarksController.text.trim(),
           });
 
-      // 2. [NEW STEP] Student ko Push Notification bhejein
       try {
         String notificationTitle = 'Fee Receipt Update';
         String notificationBody =
@@ -821,7 +775,7 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
         }
 
         await NotificationService.sendPushToUser(
-          targetUserId: widget.item.studentUid, // Student ki unique UID
+          targetUserId: widget.item.studentUid,
           title: notificationTitle,
           body: notificationBody,
           notificationType: 'receipt_update',
@@ -829,7 +783,6 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
         );
       } catch (notificationError) {
         debugPrint('NOTIFICATION ERROR: $notificationError');
-        // Notification fail hone par bhi status update nahi rukega
       }
 
       if (!mounted) return;
@@ -1183,10 +1136,6 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
     );
   }
 }
-
-// =========================================================================
-// SHARED HELPERS
-// =========================================================================
 
 class _StatusConfig {
   final Color color;
