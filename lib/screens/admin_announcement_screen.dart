@@ -14,7 +14,6 @@ class AdminAnnouncementsScreen extends StatefulWidget {
 }
 
 class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
-  // ── Colors (prompt palette) ────────────────────────────────────────────────
   static const _navy = Color(0xFF1E3A5F);
   static const _primary = Color(0xFF3B82F6);
   static const _success = Color(0xFF10B981);

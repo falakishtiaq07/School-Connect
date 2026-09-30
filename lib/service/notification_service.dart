@@ -4,11 +4,9 @@ import 'package:http/http.dart' as http;
 
 class NotificationService {
   static const String oneSignalAppId = "ed2a3db5-57d7-4e79-a39b-fe367eaa8c55";
-  static const String restApiKey =
-      "os_v2_app_5uvd3nkx25hhti437y3h5kumku6wxmppzgfebnvgwbbbbkpkoqzqrvkk2pve3rnqxtp5fjn47j6ya43eyfxuilzhn22f5t3rppxh5ra";
 
-  static const String _sendUrl = "https://api.onesignal.com/notifications";
-
+  static const String _sendUrl =
+      "https://admin-backend-six-delta.vercel.app/api/send_push";
   static Future<void> sendPushToUser({
     required String title,
     required String body,
@@ -145,17 +143,12 @@ class NotificationService {
 
   static Future<void> _send(Map<String, dynamic> payload) async {
     try {
-      debugPrint("================================================");
       debugPrint("ONESIGNAL REQUEST:");
       debugPrint(const JsonEncoder.withIndent("  ").convert(payload));
-      debugPrint("================================================");
 
       final response = await http.post(
         Uri.parse(_sendUrl),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "key $restApiKey",
-        },
+        headers: {"Content-Type": "application/json"},
         body: jsonEncode(payload),
       );
 
@@ -184,17 +177,13 @@ class NotificationService {
         );
       }
 
-      debugPrint("================================================");
       debugPrint("ONESIGNAL SUCCESS");
       debugPrint("Notification ID: $notificationId");
-      debugPrint("================================================");
     } catch (e, stackTrace) {
-      debugPrint("================================================");
       debugPrint("ONESIGNAL SEND ERROR:");
       debugPrint(e.toString());
       debugPrint("STACK TRACE:");
       debugPrint(stackTrace.toString());
-      debugPrint("================================================");
       rethrow;
     }
   }
